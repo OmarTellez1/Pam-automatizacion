@@ -71,6 +71,8 @@ Al finalizar una prueba se usan siempre estos 14 IDs simulados: `137288`, `13728
 
 Para ejecutar el proceso real, haga doble clic en `INICIAR_AUTOMATIZACION.cmd`. Este segundo lanzador sí incluye `-Execute`: entra en `Accounts > Browse By Category > Favorites`, cuenta las filas disponibles y crea o recupera una solicitud `Pending` por cada cuenta. La cantidad es dinámica. Si PAM rechaza una cuenta porque ya existe un acceso aprobado que se superpone con el horario solicitado, la registra como omitida y continúa con el siguiente favorito; otros tipos de error sí detienen el proceso. Después aplica el resultado elegido previamente en el toggle. El navegador funciona de forma desatendida para reducir el tiempo del proceso; la terminal permanece visible para el estado y el resultado.
 
+Antes de cada `Submit Request`, el flujo espera que el formulario termine de inicializarse, exige que `Application Session` permanezca seleccionado y comprueba dos veces fecha, hora, días, horas, minutos y razón. El calendario admite hasta tres intentos y debe conservar la fecha durante un intervalo estable. Si el portal restablece cualquier campo a su valor predeterminado, la solicitud se bloquea y no se presiona `Submit Request`.
+
 No use `INICIAR_AUTOMATIZACION.cmd` para pruebas: abrirlo constituye la autorización para crear las solicitudes reales.
 
 El lanzador comprueba Node.js antes de iniciar y usa únicamente una versión 20 o posterior. En este equipo evita la instalación global 14.21.3 y utiliza el runtime compatible de Codex, por lo que no depende del orden de `PATH` de la terminal visible.
@@ -112,7 +114,7 @@ También se pueden proporcionar los valores directamente para una ejecución no 
 .\scripts\run-access-requests.ps1 -Date '01/08' -StartTime '14:00' -Headed
 ```
 
-La duración admite de 1 a 8 horas y la razón se obtiene de la configuración persistente. El flujo consulta exclusivamente el estado `Pending` para comprobar solicitudes equivalentes y extraer sus Request ID. Primero exige que `Request Start Date` coincida exactamente con la fecha y hora configuradas; después cruza sistema, cuenta y familia de aplicación con las cuentas actuales de `Favorites`. La razón se envía en el formulario, pero no participa en la identificación porque suele repetirse entre ejecuciones. No abre ni consulta el estado `Approved`.
+La duración admite de 1 a 8 horas y la razón se obtiene de la configuración persistente. El flujo consulta exclusivamente el estado `Pending` para comprobar solicitudes equivalentes y extraer sus Request ID. Recorre todas las páginas de la tabla y contrasta los Request ID únicos leídos con el contador total; no presupone que `Pending` tenga 14 elementos ni que todo quepa en una página. Después exige que `Request Start Date` coincida exactamente con la fecha y hora configuradas y cruza sistema, cuenta y familia de aplicación con las cuentas actuales de `Favorites`. Las demás solicitudes pendientes se ignoran. La razón se envía en el formulario, pero no participa en la identificación porque suele repetirse entre ejecuciones. No abre ni consulta el estado `Approved`.
 
 El lanzador final de doble clic está implementado como `INICIAR_AUTOMATIZACION.cmd`. No se requiere un `.exe`: el archivo CMD inicia el mismo flujo de PowerShell y Node.js instalado en esta carpeta.
 
@@ -153,6 +155,8 @@ Sin `-Display`, el borrador se guarda en Outlook sin abrir la ventana. Para envi
 ```
 
 Antes de crear o enviar, el script regenera el correo desde `run-results\last-run.json`, exige un ID único por cuenta favorita y comprueba que coincidan con las solicitudes `Pending`. Inmediatamente antes de `Send()` vuelve a comprobar el hash del cuerpo y todos los IDs; en modo de prueba exige exactamente la lista simulada autorizada. Siempre crea un mensaje nuevo, sin recuperar borradores anteriores. `-Send` bloquea un segundo envío del mismo conjunto de ID; `-Force` permite un reenvío deliberado.
+
+La integridad se calcula directamente sobre los bytes UTF-8 del HTML, evitando que Windows PowerShell 5 altere tildes u otros caracteres al convertir el contenido. `scripts\run-outlook-classic.ps1 -ValidateOnly` regenera y valida manifiesto, hash, marcador e IDs sin abrir Outlook, crear borradores ni enviar mensajes.
 
 La validación histórica del 31 de julio de 2026 creó correctamente un borrador con los 14 ID esperados y confirmó `Sent = False`; no se envió ningún correo durante esa comprobación.
 

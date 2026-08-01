@@ -2,7 +2,8 @@
 param(
     [switch]$Send,
     [switch]$Display,
-    [switch]$Force
+    [switch]$Force,
+    [switch]$ValidateOnly
 )
 
 $ErrorActionPreference = 'Stop'
@@ -14,9 +15,13 @@ $lastDraftPath = Join-Path $resultsDirectory 'last-draft.json'
 . (Join-Path $PSScriptRoot 'runtime.ps1')
 $node = Resolve-ProjectNode
 
+if ($ValidateOnly -and ($Send -or $Display -or $Force)) {
+    throw '-ValidateOnly no se puede combinar con -Send, -Display o -Force.'
+}
+
 & $node (Join-Path $projectDirectory 'src\prepare-access-email.mjs')
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-$manifest = Get-Content -Raw -LiteralPath $manifestPath | ConvertFrom-Json
+$manifest = Get-Content -Raw -Encoding UTF8 -LiteralPath $manifestPath | ConvertFrom-Json
 if ([bool]$manifest.testMode) {
     $lastEmailPath = Join-Path $resultsDirectory 'last-test-email.json'
     $lastDraftPath = Join-Path $resultsDirectory 'last-test-draft.json'
@@ -45,18 +50,23 @@ function Test-OrderedRequestIds {
     return (($leftValues -join ',') -ceq ($rightValues -join ','))
 }
 
-$htmlBody = Get-Content -Raw -LiteralPath ([string]$manifest.htmlPath)
-$utf8 = New-Object System.Text.UTF8Encoding($false)
+$htmlBytes = [IO.File]::ReadAllBytes([string]$manifest.htmlPath)
 $sha256 = [Security.Cryptography.SHA256]::Create()
 try {
     $calculatedContentHash = [BitConverter]::ToString(
-        $sha256.ComputeHash($utf8.GetBytes($htmlBody))
+        $sha256.ComputeHash($htmlBytes)
     ).Replace('-', '').ToLowerInvariant()
 } finally {
     $sha256.Dispose()
 }
 if ($calculatedContentHash -cne [string]$manifest.contentHash) {
-    throw 'El cuerpo del correo cambió después de validarse. No se enviará.'
+    throw "El cuerpo del correo cambió después de validarse. Esperado: $($manifest.contentHash); observado: $calculatedContentHash. No se enviará."
+}
+$strictUtf8 = New-Object System.Text.UTF8Encoding($false, $true)
+try {
+    $htmlBody = $strictUtf8.GetString($htmlBytes)
+} catch {
+    throw 'El cuerpo del correo no contiene UTF-8 válido. No se enviará.'
 }
 if ($htmlBody.Contains('{{REQUEST_IDS}}')) {
     throw 'El marcador REQUEST_IDS no fue reemplazado. No se enviará.'
@@ -76,8 +86,13 @@ if ([bool]$manifest.testMode) {
     }
 }
 
+if ($ValidateOnly) {
+    Write-Host 'Correo validado correctamente. No se abrió Outlook y no se envió ningún mensaje.'
+    return
+}
+
 if ($Send -and -not $Force -and (Test-Path -LiteralPath $lastEmailPath)) {
-    $lastEmail = Get-Content -Raw -LiteralPath $lastEmailPath | ConvertFrom-Json
+    $lastEmail = Get-Content -Raw -Encoding UTF8 -LiteralPath $lastEmailPath | ConvertFrom-Json
     $lastEmailRecipients = if ($lastEmail.toRecipients) { @($lastEmail.toRecipients) } elseif ($lastEmail.recipient) { @($lastEmail.recipient) } else { @() }
     $sameRecipients = Test-SameEmailAddresses $lastEmailRecipients $manifest.toRecipients
     $sameCc = Test-SameEmailAddresses $lastEmail.ccRecipients $manifest.ccRecipients

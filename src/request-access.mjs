@@ -143,6 +143,107 @@ async function readGridRows(page) {
   });
 }
 
+export function parsePaginationLabel(label) {
+  const match = /^Page\s+(\d+)\/(\d+)$/.exec(String(label ?? "").trim());
+  if (!match) throw new Error(`El paginador no tiene un formato reconocido: ${label}`);
+  const currentPage = Number(match[1]);
+  const totalPages = Number(match[2]);
+  if (
+    !Number.isSafeInteger(currentPage) ||
+    !Number.isSafeInteger(totalPages) ||
+    currentPage < 1 ||
+    totalPages < 1 ||
+    currentPage > totalPages
+  ) {
+    throw new Error(`El paginador contiene valores inválidos: ${label}`);
+  }
+  return { currentPage, totalPages };
+}
+
+async function visibleGridSignature(page) {
+  return page.evaluate(() => [...document.querySelectorAll('tr[aria-label^="Row "]')]
+    .map((row) => row.querySelector('[data-column-id="RequestId"]')?.textContent?.trim() ?? "")
+    .join("|"));
+}
+
+async function waitForGridPage(page, expectedPage, previousSignature) {
+  await page.waitForFunction(
+    ({ expected, previous }) => {
+      const input = document.querySelector('input[type="number"][aria-label^="Page "]');
+      const match = /^Page\s+(\d+)\/(\d+)$/.exec(input?.getAttribute("aria-label") ?? "");
+      if (!match || Number(match[1]) !== expected) return false;
+      const signature = [...document.querySelectorAll('tr[aria-label^="Row "]')]
+        .map((row) => row.querySelector('[data-column-id="RequestId"]')?.textContent?.trim() ?? "")
+        .join("|");
+      return signature !== previous;
+    },
+    { expected: expectedPage, previous: previousSignature },
+  );
+  await page.waitForTimeout(350);
+}
+
+async function readPendingItemCount(page) {
+  return page.evaluate(() => {
+    const counts = [...document.querySelectorAll("*")]
+      .filter((element) => element.children.length === 0)
+      .map((element) => /^(\d+)\s+items?$/.exec(element.textContent?.trim() ?? ""))
+      .filter(Boolean)
+      .map((match) => Number(match[1]));
+    return counts.length ? Math.max(...counts) : undefined;
+  });
+}
+
+export async function readAllPendingGridRows(page) {
+  const pageInput = page.locator('input[type="number"][aria-label^="Page "]');
+  if ((await pageInput.count()) === 0) return readGridRows(page);
+  if ((await pageInput.count()) !== 1) {
+    throw new Error("La tabla Pending contiene más de un paginador reconocido.");
+  }
+
+  for (let scanAttempt = 1; scanAttempt <= 3; scanAttempt += 1) {
+    let pageInfo = parsePaginationLabel(await pageInput.getAttribute("aria-label"));
+    if (pageInfo.currentPage !== 1) {
+      const previousSignature = await visibleGridSignature(page);
+      await page.getByRole("button", { name: "First page", exact: true }).click();
+      await waitForGridPage(page, 1, previousSignature);
+      pageInfo = parsePaginationLabel(await pageInput.getAttribute("aria-label"));
+    }
+
+    const rowsById = new Map();
+    for (let visited = 0; visited < 500; visited += 1) {
+      const rows = await readGridRows(page);
+      for (const row of rows) {
+        const requestId = String(row.cells.RequestId ?? "").trim();
+        if (!/^\d+$/.test(requestId)) {
+          throw new Error("Pending contiene una fila sin Request ID válido.");
+        }
+        rowsById.set(requestId, row);
+      }
+
+      pageInfo = parsePaginationLabel(await pageInput.getAttribute("aria-label"));
+      if (pageInfo.currentPage === pageInfo.totalPages) break;
+      const previousSignature = await visibleGridSignature(page);
+      const nextPage = pageInfo.currentPage + 1;
+      await page.getByRole("button", { name: "Next page", exact: true }).click();
+      await waitForGridPage(page, nextPage, previousSignature);
+      if (visited === 499) throw new Error("Pending excedió el límite seguro de 500 páginas.");
+    }
+
+    const expectedCount = await readPendingItemCount(page);
+    if (expectedCount === undefined || rowsById.size === expectedCount) {
+      return [...rowsById.values()];
+    }
+    if (scanAttempt < 3) await page.waitForTimeout(750);
+    else {
+      throw new Error(
+        `Pending indica ${expectedCount} elementos, pero se pudieron leer ${rowsById.size} ` +
+        "Request ID únicos después de recorrer todas sus páginas.",
+      );
+    }
+  }
+  throw new Error("No fue posible completar la lectura paginada de Pending.");
+}
+
 async function openFavoriteAccounts(page) {
   await page.goto(ACCOUNTS_URL, { waitUntil: "domcontentloaded" });
 
@@ -219,7 +320,7 @@ async function selectPendingStatus(page) {
 async function readPendingRequests(page) {
   await page.goto(REQUESTS_URL, { waitUntil: "domcontentloaded" });
   await selectPendingStatus(page);
-  const rows = await readGridRows(page);
+  const rows = await readAllPendingGridRows(page);
   return rows.map(({ cells }) => ({
     id: cells.RequestId,
     system: cells.SystemName,
@@ -250,38 +351,124 @@ async function setStartDate(page, locator, date) {
     timeZone: "UTC",
   }).format(new Date(`${date}T00:00:00Z`))} ${String(day).padStart(2, "0")}, ${year}`;
 
-  await locator.evaluate((visibleInput, target) => {
-    const hiddenInput = visibleInput.parentElement?.querySelector('input[type="hidden"]');
-    const calendar = hiddenInput?._flatpickr;
-    if (!calendar) {
-      throw new Error("El control de fecha no expone su calendario Flatpickr.");
+  let actualLabel = "";
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    await locator.evaluate((visibleInput, target) => {
+      const hiddenInput = visibleInput.parentElement?.querySelector('input[type="hidden"]');
+      const calendar = hiddenInput?._flatpickr;
+      if (!calendar) {
+        throw new Error("El control de fecha no expone su calendario Flatpickr.");
+      }
+      const targetDate = new Date(target.year, target.month - 1, target.day);
+      document
+        .querySelectorAll(`[data-codex-calendar="${target.marker}"]`)
+        .forEach((element) => element.removeAttribute("data-codex-calendar"));
+      calendar.open();
+      calendar.jumpToDate(targetDate);
+      calendar.calendarContainer.setAttribute("data-codex-calendar", target.marker);
+    }, { year, month, day, marker: calendarMarker });
+
+    const calendar = page.locator(`[data-codex-calendar="${calendarMarker}"]`);
+    const targetDay = calendar.locator(
+      `.flatpickr-day[aria-label="${targetLabel}"]:not(.flatpickr-disabled)`,
+    );
+    await targetDay.waitFor({ state: "visible", timeout: 10_000 });
+    if ((await targetDay.count()) !== 1) {
+      throw new Error(`La fecha ${targetLabel} no aparece una sola vez en su calendario.`);
     }
-    const targetDate = new Date(target.year, target.month - 1, target.day);
-    document
-      .querySelectorAll(`[data-codex-calendar="${target.marker}"]`)
-      .forEach((element) => element.removeAttribute("data-codex-calendar"));
-    calendar.open();
-    calendar.jumpToDate(targetDate);
-    calendar.calendarContainer.setAttribute("data-codex-calendar", target.marker);
-  }, { year, month, day, marker: calendarMarker });
+    await targetDay.click();
 
-  const calendar = page.locator(`[data-codex-calendar="${calendarMarker}"]`);
-  const targetDay = calendar.locator(
-    `.flatpickr-day[aria-label="${targetLabel}"]:not(.flatpickr-disabled)`,
-  );
-  await targetDay.waitFor({ state: "visible", timeout: 10_000 });
-  if ((await targetDay.count()) !== 1) {
-    throw new Error(`La fecha ${targetLabel} no aparece una sola vez en su calendario.`);
+    let stableSamples = 0;
+    for (let sample = 0; sample < 12; sample += 1) {
+      await page.waitForTimeout(125);
+      actualLabel = await locator.inputValue();
+      stableSamples = actualLabel === expectedInputLabel ? stableSamples + 1 : 0;
+      if (stableSamples >= 8) return;
+    }
+    await page.waitForTimeout(250);
   }
-  await targetDay.click();
 
-  await page.waitForTimeout(350);
-  const actualLabel = await locator.inputValue();
-  if (actualLabel !== expectedInputLabel) {
+  throw new Error(
+    `El calendario no conservó la fecha solicitada después de 3 intentos. ` +
+    `Esperada: ${expectedInputLabel}; observada: ${actualLabel}`,
+  );
+}
+
+function requestFormLocators(page) {
+  return {
+    startDate: page.getByLabel("Start Date", { exact: true }),
+    startTime: page.getByLabel("Start Time", { exact: true }),
+    days: page.getByLabel("Days", { exact: true }),
+    hours: page.getByLabel("Hours", { exact: true }),
+    minutes: page.getByLabel("Minutes", { exact: true }),
+    reason: page.getByLabel("Reason", { exact: true }),
+    applicationSession: page.getByRole("switch", {
+      name: "Application Session",
+      exact: true,
+    }),
+  };
+}
+
+function expectedRequestFormValues(options) {
+  const [expectedYear, , expectedDay] = options.date.split("-");
+  const expectedMonthName = new Intl.DateTimeFormat("en-US", {
+    month: "long",
+    timeZone: "UTC",
+  }).format(new Date(`${options.date}T00:00:00Z`));
+  return {
+    date: `${expectedMonthName} ${expectedDay}, ${expectedYear}`,
+    time: options.startTime,
+    days: String(options.durationDays),
+    hours: String(options.durationHours),
+    minutes: "0",
+    reason: options.reason,
+  };
+}
+
+async function readRequestFormValues(fields) {
+  return {
+    date: await fields.startDate.inputValue(),
+    time: await fields.startTime.inputValue(),
+    days: await fields.days.inputValue(),
+    hours: await fields.hours.inputValue(),
+    minutes: await fields.minutes.inputValue(),
+    reason: await fields.reason.inputValue(),
+  };
+}
+
+async function assertRequestFormValues(page, options, context) {
+  const fields = requestFormLocators(page);
+  const actual = await readRequestFormValues(fields);
+  const expected = expectedRequestFormValues(options);
+  const applicationSessionChecked =
+    (await fields.applicationSession.count()) === 1 &&
+    (await fields.applicationSession.getAttribute("aria-checked")) === "true";
+  if (!applicationSessionChecked || JSON.stringify(actual) !== JSON.stringify(expected)) {
     throw new Error(
-      `El calendario no conservó la fecha solicitada. Esperada: ${expectedInputLabel}; observada: ${actualLabel}`,
+      `${context}: el formulario cambió y Submit Request fue bloqueado. ` +
+      `Esperado: ${JSON.stringify(expected)}; observado: ${JSON.stringify(actual)}; ` +
+      `Application Session: ${applicationSessionChecked ? "seleccionado" : "no seleccionado"}.`,
     );
   }
+}
+
+async function waitForRequestFormReady(page) {
+  const fields = requestFormLocators(page);
+  await Promise.all([
+    fields.startDate.waitFor({ state: "visible", timeout: 15_000 }),
+    fields.startTime.waitFor({ state: "visible", timeout: 15_000 }),
+    fields.hours.waitFor({ state: "visible", timeout: 15_000 }),
+    fields.reason.waitFor({ state: "visible", timeout: 15_000 }),
+    fields.applicationSession.waitFor({ state: "visible", timeout: 15_000 }),
+  ]);
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    if ((await fields.applicationSession.getAttribute("aria-checked")) === "true") {
+      await page.waitForTimeout(500);
+      if ((await fields.applicationSession.getAttribute("aria-checked")) === "true") return;
+    }
+    await page.waitForTimeout(150);
+  }
+  throw new Error("El formulario no terminó de inicializar Application Session.");
 }
 
 async function openRequestForm(page, target, expectedCount) {
@@ -317,63 +504,23 @@ async function openRequestForm(page, target, expectedCount) {
     state: "visible",
     timeout: 15_000,
   });
+  await waitForRequestFormReady(page);
 }
 
 async function fillRequestForm(page, options) {
-  const startDate = page.getByLabel("Start Date", { exact: true });
-  const startTime = page.getByLabel("Start Time", { exact: true });
-  const days = page.getByLabel("Days", { exact: true });
-  const hours = page.getByLabel("Hours", { exact: true });
-  const minutes = page.getByLabel("Minutes", { exact: true });
-  const reason = page.getByLabel("Reason", { exact: true });
-
-  await setStartDate(page, startDate, options.date);
-  await startTime.fill(options.startTime);
+  const fields = requestFormLocators(page);
+  await setStartDate(page, fields.startDate, options.date);
+  await fields.startTime.fill(options.startTime);
   await page.waitForTimeout(250);
-  if ((await startTime.inputValue()) !== options.startTime) {
-    await startTime.fill(options.startTime);
+  if ((await fields.startTime.inputValue()) !== options.startTime) {
+    await fields.startTime.fill(options.startTime);
   }
-  await days.fill(String(options.durationDays));
-  await hours.fill(String(options.durationHours));
-  await minutes.fill("0");
-  await reason.fill(options.reason);
-
-  const applicationSession = page.getByRole("switch", {
-    name: "Application Session",
-    exact: true,
-  });
-  if (
-    (await applicationSession.count()) !== 1 ||
-    (await applicationSession.getAttribute("aria-checked")) !== "true"
-  ) {
-    throw new Error("Application Session no está seleccionado.");
-  }
-
-  const [expectedYear, , expectedDay] = options.date.split("-");
-  const expectedMonthName = new Intl.DateTimeFormat("en-US", {
-    month: "long",
-    timeZone: "UTC",
-  }).format(new Date(`${options.date}T00:00:00Z`));
-  const expectedDate = `${expectedMonthName} ${expectedDay}, ${expectedYear}`;
-  const actual = {
-    date: await startDate.inputValue(),
-    time: await startTime.inputValue(),
-    days: await days.inputValue(),
-    hours: await hours.inputValue(),
-    minutes: await minutes.inputValue(),
-    reason: await reason.inputValue(),
-  };
-  const expected = {
-    date: expectedDate,
-    time: options.startTime,
-    days: String(options.durationDays),
-    hours: String(options.durationHours),
-    minutes: "0",
-    reason: options.reason,
-  };
-  if (JSON.stringify(actual) !== JSON.stringify(expected)) {
-    throw new Error(`El formulario no conservó los valores esperados: ${JSON.stringify(actual)}`);
-  }
+  await fields.days.fill(String(options.durationDays));
+  await fields.hours.fill(String(options.durationHours));
+  await fields.minutes.fill("0");
+  await fields.reason.fill(options.reason);
+  await page.waitForTimeout(750);
+  await assertRequestFormValues(page, options, "Validación posterior al llenado");
 }
 
 const APPROVED_ACCESS_OVERLAP_CODE =
@@ -486,6 +633,8 @@ async function submitOneRequest(page, target, options, expectedCount) {
   if ((await submit.count()) !== 1) {
     throw new Error("El botón final Submit Request no es único.");
   }
+  await page.waitForTimeout(500);
+  await assertRequestFormValues(page, options, "Validación inmediata antes del envío");
   const submissionOutcome = observeSubmissionOutcome(page, submit);
   await submit.click();
   const outcome = await submissionOutcome;

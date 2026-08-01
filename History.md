@@ -262,6 +262,29 @@ Durante el desarrollo, un agente nunca debe ejecutar `INICIAR_AUTOMATIZACION.cmd
 - El campo `Fecha de inicio` presenta junto a su etiqueta el día de la semana y la fecha completa en español —por ejemplo, `Sábado, 1 de agosto de 2026`— y los actualiza inmediatamente mientras el usuario escribe un valor `dd/mm` válido.
 - La fecha dejó de escribirse manualmente: ahora usa selectores verticales de día y mes. La cantidad de días se calcula para el mes y año actuales; los meses anteriores y los días ya transcurridos del mes actual se omiten por completo, por lo que no son visibles ni seleccionables. El valor persistido conserva el formato `dd/mm` compatible con la automatización.
 
+### 24. Estabilización del formulario antes de Submit Request
+
+- Una ejecución real para `03/08/2026 10:00 AM`, 8 horas, envió correctamente las primeras 12 cuentas y se detuvo al abrir la número 13 porque Flatpickr volvió de `August 03` a `August 01`. La cuenta 13 no alcanzó el llenado de duración o razón y no se presionó `Submit Request`; la cuenta 14 nunca se intentó.
+- La captura de `Pending` mostraba `140281` con el horario correcto de la ejecución actual. Los IDs menores `140266` y `140267`, con otros horarios, eran solicitudes históricas anteriores y no fueron creados por esa ejecución.
+- El flujo ahora espera que el formulario y `Application Session` terminen de inicializarse, reintenta el calendario hasta tres veces y exige que la fecha permanezca estable durante varias lecturas consecutivas.
+- Fecha, hora, días, horas, minutos, razón y tipo de sesión se validan después del llenado y nuevamente inmediatamente antes del clic real. Si el portal cambia cualquier valor, `Submit Request` queda bloqueado y la automatización se detiene con los valores esperados y observados en el error.
+- Una prueba visible y segura posterior recorrió las 14 cuentas para `03/08/2026 10:00 AM`, 8 horas. Los 14 formularios, incluidos ambos `pgdcmotorcred2`, aprobaron las dos validaciones y se cerraron con `Cancel` más `Discard Changes`. No se crearon solicitudes ni se envió correo.
+
+### 25. Integridad del HTML del correo en Windows PowerShell 5
+
+- Al reanudar la ejecución real, las primeras 12 solicitudes fueron reconocidas y se crearon únicamente las dos faltantes. El resultado final contiene los 14 IDs consecutivos `140270`–`140283`, sin conflictos.
+- La etapa de correo se detuvo antes de Outlook porque PowerShell comparaba el hash después de leer el HTML como texto y volver a codificarlo. La protección funcionó: no se envió un mensaje cuya integridad no pudo confirmar.
+- El cálculo ahora usa los bytes originales de `CORREO_ACCESOS_PAM.html`; el cuerpo se decodifica después con UTF-8 estricto. Esto elimina transformaciones dependientes de la codificación predeterminada de Windows PowerShell 5 y conserva la protección SHA-256.
+- Se añadió `-ValidateOnly` para regenerar y comprobar manifiesto, HTML, marcador e IDs sin abrir Outlook, crear borradores ni enviar correo.
+
+### 26. Lectura paginada y dinámica de Pending
+
+- Una ejecución para `01/08/2026 7:00 PM` reconoció el ID existente `140266` y creó las 13 solicitudes faltantes, pero al final solo leyó las 10 coincidencias visibles en la página activa. La tabla contenía 29 solicitudes `Pending`, repartidas en dos páginas, por lo que el resultado no llegó a guardarse ni se envió correo.
+- La extracción dejó de leer únicamente las filas visibles. Ahora usa los controles accesibles `First page` y `Next page`, interpreta etiquetas como `Page 1/2`, acumula por Request ID y exige que la cantidad única coincida con el contador total de la tabla.
+- Solo después del recorrido completo aplica `Request Start Date` exacto y las identidades actuales de `Favorites`. La cantidad total de solicitudes ajenas puede ser menor o mayor que 14 y no afecta el resultado.
+- Una comprobación visible y de solo lectura recorrió las dos páginas reales: leyó las 29 filas, ignoró 15 solicitudes ajenas y encontró exactamente 14 para `01/08/2026 7:00 PM`: `140266` y `140284`–`140296`. No abrió formularios ni creó solicitudes.
+- La suite completa quedó en 85 pruebas aprobadas, incluidas etiquetas válidas e inválidas del paginador.
+
 ### 7. Migración y Git
 
 - El proyecto se copió íntegramente desde el directorio generado por Codex a `C:\pam automatizacion`.

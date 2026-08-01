@@ -20,6 +20,7 @@ Este documento no contiene credenciales, contraseñas, semillas TOTP ni códigos
 - El TOTP se genera localmente a partir de la semilla Base32 guardada en `.env`.
 - El TOTP usa RFC 6238 con HMAC-SHA1, seis dígitos, periodo de 30 segundos y `T0 = 0`. Los espacios, guiones y padding de la representación Base32 se normalizan. La pertenencia de una semilla al enrolamiento vigente solo puede confirmarse mediante la prueba real de login.
 - El formulario de solicitud y la extracción de IDs usan como cantidad esperada el número actual de cuentas en `Favorites`; no existe un límite fijo de 14.
+- La tabla `Pending` también es dinámica: se recorren todas sus páginas mediante `First page` y `Next page`, se exige leer el total anunciado de Request ID únicos y solo después se filtran fecha/hora e identidades de `Favorites`.
 - El flujo fue validado de forma visible con Playwright/Chrome.
 - La prueba real del 1 de agosto de 2026 creó 14 solicitudes pendientes con IDs del `140131` al `140144`.
 - Una segunda ejecución reconoció las 14 solicitudes pendientes y no generó duplicados.
@@ -41,10 +42,11 @@ Este documento no contiene credenciales, contraseñas, semillas TOTP ni códigos
 - La portada conserva el encabezado y muestra controles centrados para credenciales, solicitud, envío de correo, resultado final y ejecución. `Iniciar prueba` solo aparece con `BOTON_PRUEBA=TRUE`; `Iniciar automatización` siempre corresponde al modo real y exige confirmación. Durante cualquier ejecución todos esos controles se bloquean; se restauran al recibir un estado `completed` o `failed`. Si la acción final envió correo, el estado completado abre un diálogo de confirmación una sola vez. Un rechazo previo al inicio, incluida una fecha u hora pasada, abre un diálogo persistente; el sondeo de estado no borra el error mientras el usuario no cierre el cuadro o vaya a editar la solicitud.
 - En modo edición, cada campo vacío conserva el valor ya guardado. La prueba de login clasifica los fallos según ocurran antes del desafío TOTP, durante el desafío o después de la confirmación.
 - La configuración de solicitud muestra hora `hh:mm` con un selector `AM/PM`, la convierte de forma validada y persiste `PAM_START_TIME` como `HH:mm` de 24 horas para el portal. Sus valores no secretos regresan al formulario para poder editarlos. Al abrir esa pantalla, el servidor compara solamente la fecha con el día actual de Ecuador: si ya pasó, actualiza y persiste `PAM_START_DATE` con hoy sin modificar hora, duración ni razón.
+- Cada formulario del portal debe terminar de inicializar `Application Session` antes del llenado. La fecha requiere estabilidad después de seleccionarse y admite tres intentos. Todos los campos se comparan con la configuración después del llenado y otra vez inmediatamente antes de `Submit Request`; cualquier cambio bloquea el envío de esa cuenta.
 - El remitente, `Para`, `CC` y el editor de correo comienzan vacíos. El remitente se administra en el panel Outlook de `/credenciales`; los demás campos se administran en `/correo`. Después del primer guardado vuelven a cargar únicamente los valores configurados por el usuario; el HTML conserva formato seguro y sustituye los IDs y la razón con los datos de la ejecución actual.
 - La configuración de correo avisa que el envío requiere Outlook clásico instalado y una sesión iniciada; el nuevo Outlook no es compatible con COM.
 - La cuenta de Outlook dispone de una prueba explícita de envío a sí misma. Activar el resultado por correo sin una cuenta configurada abre un diálogo y, al cerrarlo, restaura `PAM_FINAL_ACTION=web`.
-- La suite actual contiene 83 pruebas aprobadas.
+- La suite actual contiene 85 pruebas aprobadas.
 
 ## Parámetros de negocio
 
@@ -95,7 +97,7 @@ La zona horaria del contexto del navegador y del cálculo de la fecha es `Americ
 - `scripts/runtime.ps1`: localiza un `node.exe` compatible (versión 20 o posterior). Prioriza `BI_NODE_EXE`, luego el runtime incluido con Codex y finalmente las instalaciones encontradas en `PATH`.
 - `scripts/run-login.ps1`: descifra temporalmente los secretos para el proceso y ejecuta `src/login.mjs`.
 - `scripts/run-access-requests.ps1`: ejecuta `src/request-access.mjs`; acepta fecha, hora, modo visible y autorización para crear solicitudes. Tras una ejecución real, envía por Outlook clásico o abre los IDs según `PAM_FINAL_ACTION`. `-Email S|N` permanece como sobrescritura técnica opcional.
-- `scripts/run-outlook-classic.ps1`: crea un mensaje nuevo mediante COM; por defecto lo guarda como borrador, `-Display` lo muestra y `-Send` lo envía. Nunca reutiliza un borrador anterior. Antes de enviar valida el hash del HTML, la sustitución del marcador, la presencia de todos los IDs y la lista fija completa cuando `testMode` es verdadero.
+- `scripts/run-outlook-classic.ps1`: crea un mensaje nuevo mediante COM; por defecto lo guarda como borrador, `-Display` lo muestra y `-Send` lo envía. Nunca reutiliza un borrador anterior. Antes de enviar valida directamente los bytes UTF-8 del HTML, la sustitución del marcador, la presencia de todos los IDs y la lista fija completa cuando `testMode` es verdadero. `-ValidateOnly` ejecuta esas comprobaciones sin abrir Outlook.
 - `scripts/check-outlook-classic.ps1`: comprueba Outlook clásico y la cuenta configurada creando y descartando un mensaje temporal; con `-SendTest` envía, previa confirmación de la interfaz, un correo a la misma cuenta.
 
 ### Lanzador de prueba
