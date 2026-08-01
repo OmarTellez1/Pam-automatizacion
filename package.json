@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "test": "node --test",
+    "ui": "node src/local-server.mjs",
     "login": "node src/login.mjs",
     "request-access": "node src/request-access.mjs",
     "email:prepare": "node src/prepare-access-email.mjs",

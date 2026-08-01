@@ -2,7 +2,7 @@
 
 Este componente abre exclusivamente `https://10.30.17.117`, introduce el usuario y la contraseña, genera el código TOTP vigente y comprueba que BeyondInsight haya abierto Password Safe.
 
-> Antes de modificar o ampliar el flujo, lea también [`LOGIC.md`](LOGIC.md). Allí se documentan el propósito, la lógica interna, las decisiones de seguridad, los archivos y el estado actual del trabajo para facilitar la continuidad en otros hilos de Codex.
+> **Instrucción obligatoria para nuevos agentes de IA:** antes de analizar, ejecutar o modificar el proyecto, lea completos este `README.md`, [`LOGIC.md`](LOGIC.md) y [`History.md`](History.md). `LOGIC.md` documenta el funcionamiento técnico; `History.md` conserva las decisiones, avances comprobados y la dirección futura. Después de cambios relevantes, mantenga actualizados los tres documentos.
 
 ## Requisitos
 
@@ -20,10 +20,18 @@ Abra PowerShell en esta carpeta y ejecute:
 
 ```powershell
 npm install
-.\scripts\setup-secrets.ps1
 ```
 
-El asistente solicita los secretos directamente en PowerShell. La contraseña y la clave TOTP se cifran mediante DPAPI y solo la misma cuenta de Windows puede descifrarlas. No introduzca esos valores en un chat, archivo de código o tarea programada.
+Después, haga doble clic en `INICIAR_INTERFAZ.cmd`. Se abrirá una página servida exclusivamente en `http://127.0.0.1:4317`. La terminal que inicia el servidor debe permanecer abierta mientras se usa la interfaz.
+
+La pantalla inicial contiene dos acciones:
+
+- `Configurar credenciales`: abre el formulario implementado en esta etapa.
+- `Iniciar automatización`: permanece deshabilitado hasta integrar el flujo de solicitudes en la siguiente etapa.
+
+El formulario solicita usuario, contraseña y la clave Base32 de enrolamiento de Microsoft Authenticator. Esta clave no es el código temporal de seis dígitos. Al guardar, los tres valores se escriben en `.env` y se realiza inmediatamente una prueba aislada de inicio de sesión. Esta comprobación no crea solicitudes ni envía correos.
+
+`.env` contiene texto legible y está excluido de Git. No debe copiarse a chats, documentación, logs ni commits. `.env.example` documenta los nombres de variables sin valores reales.
 
 ## Prueba visible
 
@@ -32,6 +40,8 @@ El asistente solicita los secretos directamente en PowerShell. La contraseña y 
 ```
 
 La primera prueba debe mostrar Chrome y terminar en BeyondInsight Password Safe. Cierre la ventana para finalizar el proceso.
+
+Este script y el flujo de solicitudes cargan `BI_USERNAME`, `BI_PASSWORD` y `BI_TOTP_SECRET` desde `.env`. Si el archivo aún no existe, primero debe usarse `INICIAR_INTERFAZ.cmd`.
 
 ## Ejecución desatendida
 
@@ -172,6 +182,8 @@ Microsoft Graph devuelve `202 Accepted` cuando acepta el mensaje para procesamie
 - Se bloquean solicitudes hacia orígenes distintos de `https://10.30.17.117`.
 - No se guardan cookies ni sesiones del navegador.
 - La contraseña, la clave TOTP y el código generado no se escriben en consola.
+- La interfaz escucha únicamente en `127.0.0.1`, rechaza orígenes externos y nunca devuelve las credenciales guardadas al navegador.
+- El archivo `.env` está excluido de Git; `.env.example` solo contiene valores ficticios.
 - Los tokens de Outlook se guardan cifrados con DPAPI mediante Microsoft Authentication Extensions for Node.
 - El envío de correo solicita únicamente el permiso delegado `Mail.Send`.
 - La ejecución predeterminada de `run-email.ps1` solo genera una vista previa; `-Send` es obligatorio para enviar.
@@ -182,4 +194,4 @@ Microsoft Graph devuelve `202 Accepted` cuando acepta el mensaje para procesamie
 
 ## Limitación de seguridad
 
-Guardar la contraseña y la semilla TOTP en el mismo equipo elimina la separación efectiva de factores. Para producción, es preferible que BeyondTrust proporcione una cuenta de automatización con privilegios mínimos o una API con credenciales rotables. Revocar el usuario, restablecer el TOTP o cambiar la contraseña requiere volver a ejecutar `setup-secrets.ps1`.
+Guardar la contraseña y la semilla TOTP juntas y como texto legible en `.env` elimina la separación efectiva de factores. Cualquier persona o proceso con acceso a la carpeta puede leerlas. Para producción, es preferible que BeyondTrust proporcione una cuenta de automatización con privilegios mínimos o una API con credenciales rotables. Revocar el usuario, restablecer el TOTP o cambiar la contraseña requiere volver a configurar y comprobar las credenciales desde la interfaz local.

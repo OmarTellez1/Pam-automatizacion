@@ -1,40 +1,20 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
-import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
+import {
+  loadProjectCredentials,
+  projectDirectory,
+  validateCredentials,
+} from "./env-config.mjs";
 import { generateTotp, waitForSafeTotpWindow } from "./totp.mjs";
 
 export const TARGET_ORIGIN = "https://10.30.17.117";
 export const LOGIN_URL = `${TARGET_ORIGIN}/webconsole/login?redir=dashboard`;
-export const projectDirectory = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "..",
-);
-
 const artifactsDirectory = path.join(projectDirectory, "run-artifacts");
-
-function requiredEnvironmentVariable(name) {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`Falta la variable segura ${name}. Ejecute scripts/setup-secrets.ps1.`);
-  }
-  return value;
-}
 
 export function isEnabled(value) {
   return String(value).toLowerCase() === "true";
-}
-
-async function readConfiguration() {
-  const configPath = path.join(projectDirectory, "state", "config.json");
-  const config = JSON.parse(await readFile(configPath, "utf8"));
-
-  if (!config.username || typeof config.username !== "string") {
-    throw new Error("state/config.json no contiene un usuario válido.");
-  }
-
-  return config;
 }
 
 function assertAllowedUrl(url) {
@@ -73,9 +53,9 @@ export async function saveFailureArtifact(page, error) {
 }
 
 export async function openAuthenticatedSession(options = {}) {
-  const config = await readConfiguration();
-  const password = requiredEnvironmentVariable("BI_PASSWORD");
-  const totpSecret = requiredEnvironmentVariable("BI_TOTP_SECRET");
+  const credentials = options.credentials
+    ? validateCredentials(options.credentials)
+    : await loadProjectCredentials();
   const headed = options.headed ?? isEnabled(process.env.BI_HEADED);
 
   const browser = await chromium.launch({ channel: "chrome", headless: !headed });
@@ -116,15 +96,15 @@ export async function openAuthenticatedSession(options = {}) {
       "Password",
     );
 
-    await username.fill(config.username);
-    await passwordField.fill(password);
+    await username.fill(credentials.username);
+    await passwordField.fill(credentials.password);
 
-    if (config.loginTo) {
+    if (process.env.BI_LOGIN_TO) {
       const loginTo = await countOrFail(
         page.getByRole("combobox", { name: "Log in to", exact: true }),
         "Log in to",
       );
-      await loginTo.selectOption({ label: config.loginTo });
+      await loginTo.selectOption({ label: process.env.BI_LOGIN_TO });
     }
 
     const loginButton = await countOrFail(
@@ -139,7 +119,7 @@ export async function openAuthenticatedSession(options = {}) {
     });
     await responseField.waitFor({ state: "visible", timeout: 30_000 });
     await waitForSafeTotpWindow();
-    await responseField.fill(generateTotp(totpSecret));
+    await responseField.fill(generateTotp(credentials.totpSecret));
 
     const submitButton = await countOrFail(
       page.getByRole("button", { name: "Submit", exact: true }),
@@ -166,4 +146,3 @@ export async function openAuthenticatedSession(options = {}) {
     throw error;
   }
 }
-

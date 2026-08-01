@@ -10,14 +10,14 @@ Este proyecto automatiza un flujo interno de BeyondInsight Password Safe alojado
 4. Consultar exclusivamente `Requests > Pending`.
 5. Extraer y guardar los 14 `Request ID` pendientes.
 
-El flujo dispone de dos lanzadores de doble clic. `INICIAR_PRUEBA.cmd` valida un formulario y lo descarta; `INICIAR_AUTOMATIZACION.cmd` incluye `-Execute` y crea las solicitudes reales. Ambos abren una interfaz de terminal con las tres preguntas. La generación del cuerpo y el envío autorizado del correo están implementados. El método activo usa Outlook clásico mediante COM porque el usuario no tiene permisos para registrar aplicaciones en Microsoft Entra. Microsoft Graph permanece implementado como alternativa futura. En el flujo integrado, solo la respuesta `S` autoriza el envío; `N` entrega los IDs mediante el Bloc de notas.
+El flujo dispone de una interfaz web local para configurar credenciales y de dos lanzadores de solicitudes. `INICIAR_INTERFAZ.cmd` abre la página en `127.0.0.1`; su botón de automatización permanece deshabilitado durante esta primera etapa. `INICIAR_PRUEBA.cmd` valida un formulario y lo descarta; `INICIAR_AUTOMATIZACION.cmd` incluye `-Execute` y crea las solicitudes reales. Estos dos lanzadores todavía usan la interfaz de terminal con las tres preguntas. La generación del cuerpo y el envío autorizado del correo están implementados. El método activo usa Outlook clásico mediante COM porque el usuario no tiene permisos para registrar aplicaciones en Microsoft Entra. Microsoft Graph permanece implementado como alternativa futura. En el flujo integrado, solo la respuesta `S` autoriza el envío; `N` entrega los IDs mediante el Bloc de notas.
 
 Este documento no contiene credenciales, contraseñas, semillas TOTP ni códigos temporales. Un nuevo hilo de Codex debe preservar esa regla.
 
 ## Estado actual
 
 - El inicio de sesión desatendido funciona.
-- El TOTP se genera localmente a partir de la semilla Base32 cifrada.
+- El TOTP se genera localmente a partir de la semilla Base32 guardada en `.env`.
 - El formulario de solicitud y la extracción de IDs funcionan para 14 cuentas.
 - El flujo fue validado de forma visible con Playwright/Chrome.
 - La prueba real del 1 de agosto de 2026 creó 14 solicitudes pendientes con IDs del `140131` al `140144`.
@@ -35,6 +35,9 @@ Este documento no contiene credenciales, contraseñas, semillas TOTP ni códigos
 - Después de la confirmación explícita del usuario, ese mismo borrador se envió mediante COM el 31 de julio de 2026. La verificación encontró el mensaje en `Elementos enviados` con `Sent = True`, un destinatario y los 14 ID completos. `last-email.json` impide repetir accidentalmente el mismo conjunto.
 - El lanzador final `INICIAR_AUTOMATIZACION.cmd` está implementado y ejecuta el navegador de forma desatendida con `-Execute`.
 - `mail-config.json` expone el destinatario principal y tres posiciones opcionales de CC. Actualmente el destinatario de prueba es `tellezoe@hitss.com` y las copias están vacías.
+- La interfaz web local permite guardar `BI_USERNAME`, `BI_PASSWORD` y `BI_TOTP_SECRET` en `.env` y prueba inmediatamente el inicio de sesión sin crear solicitudes.
+- La interfaz solo escucha en `127.0.0.1`, valida Host y Origin, aplica una política CSP restrictiva, no precarga secretos y bloquea comprobaciones simultáneas.
+- La suite actual contiene 29 pruebas aprobadas, incluida la apertura automática del navegador al iniciar el servidor.
 
 ## Parámetros de negocio
 
@@ -60,6 +63,9 @@ La zona horaria del contexto del navegador y del cálculo de la fecha es `Americ
 ### Entradas principales
 
 - `src/session.mjs`: crea el navegador, aplica las restricciones de red e inicia sesión.
+- `src/env-config.mjs`: interpreta, valida y guarda las credenciales de `.env` sin dependencias adicionales.
+- `src/local-server.mjs`: sirve la interfaz en loopback, expone solo el estado de configuración y coordina el guardado con la prueba de login.
+- `web/`: HTML, CSS y JavaScript de la interfaz local; no contiene reglas de autenticación ni secretos.
 - `src/login.mjs`: ejecutable sencillo para comprobar solamente el inicio de sesión.
 - `src/request-access.mjs`: orquesta las 14 solicitudes, evita duplicados pendientes y extrae los IDs.
 - `src/request-config.mjs`: constantes y funciones puras de fechas, normalización y claves de solicitud.
@@ -76,7 +82,8 @@ La zona horaria del contexto del navegador y del cálculo de la fecha es `Americ
 
 ### Scripts de PowerShell
 
-- `scripts/setup-secrets.ps1`: solicita usuario, contraseña, destino de login y semilla TOTP. Guarda los secretos mediante DPAPI.
+- `scripts/setup-secrets.ps1`: compatibilidad con el nombre anterior; ahora inicia la interfaz local de credenciales.
+- `scripts/run-local-interface.ps1`: resuelve Node.js 20 o posterior e inicia el servidor local.
 - `scripts/runtime.ps1`: localiza un `node.exe` compatible (versión 20 o posterior). Prioriza `BI_NODE_EXE`, luego el runtime incluido con Codex y finalmente las instalaciones encontradas en `PATH`.
 - `scripts/run-login.ps1`: descifra temporalmente los secretos para el proceso y ejecuta `src/login.mjs`.
 - `scripts/run-access-requests.ps1`: hace lo mismo y ejecuta `src/request-access.mjs`; acepta fecha, hora, decisión `S/N`, modo visible y autorización para crear las solicitudes. Tras una ejecución real, envía por Outlook clásico o abre los IDs en el Bloc de notas según la respuesta.
@@ -89,6 +96,10 @@ La zona horaria del contexto del navegador y del cálculo de la fecha es `Americ
 
 - `INICIAR_PRUEBA.cmd`: lanzador de doble clic para la interfaz de terminal. Ejecuta `run-access-requests.ps1 -Headed` sin `-Execute`, por lo que arma, valida y descarta el primer formulario sin enviar solicitudes. Mantiene la ventana abierta al finalizar normalmente o con error para que el usuario lea el resultado; ante la cancelación con `Ctrl+C`, devuelve el código `130`.
 
+### Lanzador de interfaz
+
+- `INICIAR_INTERFAZ.cmd`: inicia el servidor en `http://127.0.0.1:4317` y abre automáticamente el navegador predeterminado mediante Windows Explorer. La ruta `/credenciales` guarda los tres valores en `.env` y ejecuta únicamente una prueba de inicio de sesión. El botón para iniciar la automatización está deshabilitado hasta la siguiente etapa.
+
 ### Lanzador final
 
 - `INICIAR_AUTOMATIZACION.cmd`: lanzador de producción. Ejecuta `run-access-requests.ps1 -Execute` sin `-Headed`, crea o recupera exactamente 14 solicitudes `Pending` y aplica la decisión de correo. `S` invoca Outlook clásico con `-Send`; `N` genera `run-results/REQUEST_IDS.txt` y lo abre en un Bloc de notas nuevo. No debe ejecutarse como prueba.
@@ -97,9 +108,8 @@ La resolución explícita del runtime es necesaria porque este equipo también t
 
 ### Estado y resultados
 
-- `state/config.json`: contiene el usuario y el valor opcional de `Log in to`; no contiene la contraseña ni la semilla TOTP.
-- `state/password.dpapi`: contraseña cifrada para la cuenta actual de Windows.
-- `state/totp.dpapi`: semilla TOTP cifrada para la cuenta actual de Windows.
+- `.env`: contiene `BI_USERNAME`, `BI_PASSWORD` y `BI_TOTP_SECRET` como texto legible. Es local y está excluido de Git.
+- `.env.example`: documenta el formato con valores ficticios y sí puede versionarse.
 - `run-results/last-run.json`: resultado estructurado de la última ejecución real, incluyendo solicitudes `pending`, `requestIds` y la decisión `sendEmail`.
 - `run-results/REQUEST_IDS.txt`: salida de texto con un ID por línea; se genera y abre en el Bloc de notas cuando la respuesta es `N`.
 - `run-results/CORREO_ACCESOS_PAM.md`: cuerpo del correo generado con los 14 ID de la última ejecución correcta.
@@ -112,14 +122,14 @@ La resolución explícita del runtime es necesaria porque este equipo también t
 - `run-artifacts/`: capturas e informes de fallos.
 - `test/`: pruebas unitarias ejecutadas por Node.
 
-`state`, `run-results` y `run-artifacts` están excluidos mediante `.gitignore`.
+`.env`, `state`, `run-results`, `run-artifacts` y `.playwright-cli` están excluidos mediante `.gitignore`.
 
 ## Flujo de autenticación
 
 `openAuthenticatedSession()` en `src/session.mjs` realiza estos pasos:
 
-1. Lee `state/config.json`.
-2. Obtiene `BI_PASSWORD` y `BI_TOTP_SECRET` del entorno temporal creado por PowerShell.
+1. Lee `BI_USERNAME`, `BI_PASSWORD` y `BI_TOTP_SECRET` desde `.env`. Las variables ya presentes en el proceso pueden sobrescribir estos valores para usos controlados.
+2. Valida que los tres valores existan y que la clave TOTP sea Base32; un código temporal de seis dígitos se rechaza.
 3. Inicia Google Chrome mediante `playwright-core`.
 4. Configura locale `es-EC`, zona horaria de Ecuador y la excepción HTTPS requerida por el certificado privado.
 5. Bloquea cualquier solicitud de red cuyo origen sea diferente de `https://10.30.17.117`. Solo se permiten además recursos internos `about:`, `data:` y `blob:`.
@@ -240,21 +250,17 @@ Los selectores están basados en roles, etiquetas y atributos de la interfaz. Si
 
 ## Gestión y rotación de credenciales
 
-Para cambiar el usuario, la contraseña o la semilla alfanumérica TOTP, ejecute nuevamente:
+Para cambiar el usuario, la contraseña o la semilla alfanumérica TOTP, abra `INICIAR_INTERFAZ.cmd`, seleccione `Configurar credenciales` y guarde los tres datos. La semilla TOTP es la clave Base32 de enrolamiento, no un código temporal de seis dígitos.
 
-```powershell
-.\scripts\setup-secrets.ps1
-```
+El servidor conserva cualquier otra variable ya existente en `.env`, actualiza las tres credenciales y prueba el login en una sesión de navegador aislada. Si la prueba falla, los datos permanecen guardados para que el estado sea explícito, pero la interfaz informa que no fueron verificados.
 
-Esto reemplaza los archivos de `state` con valores nuevos. La semilla TOTP es la clave Base32 de enrolamiento, no un código temporal de seis dígitos.
-
-DPAPI vincula los secretos a la cuenta de Windows que los creó. Otra cuenta o equipo no podrá descifrarlos; en ese caso se debe ejecutar nuevamente el asistente desde la identidad que realizará la automatización.
+El servidor escucha exclusivamente en IPv4 loopback, rechaza Host u Origin externos, limita el tamaño de las solicitudes y nunca expone los valores guardados mediante sus respuestas HTTP. Como `.env` es texto legible, la seguridad depende de los permisos de acceso a la carpeta del proyecto.
 
 ## Controles y límites de seguridad
 
 - Nunca incluir secretos en el código, documentación, argumentos de línea de comandos, logs o mensajes de Codex.
-- Los scripts exponen los secretos solo como variables de entorno del proceso hijo y las eliminan al finalizar.
-- Los buffers de PowerShell usados para convertir `SecureString` se liberan y ponen a cero.
+- La capa web envía los datos únicamente al servidor local y limpia del formulario la contraseña y la semilla después de una comprobación correcta.
+- Ningún endpoint permite leer el contenido de `.env`; el estado público solo indica si la configuración es válida.
 - La excepción de certificado se limita al contexto aislado del navegador y el tráfico externo se bloquea.
 - Los códigos TOTP nunca se imprimen.
 - Los artefactos de error pueden contener una captura del portal; deben tratarse como información interna.
@@ -294,8 +300,8 @@ Después de cualquier cambio de selectores o lógica del formulario:
 
 Antes de continuar:
 
-1. Leer `README.md` y este `LOGIC.md` completos.
-2. No pedir ni mostrar secretos si los archivos DPAPI ya están configurados.
+1. Leer `README.md`, este `LOGIC.md` y `History.md` completos.
+2. No pedir ni mostrar secretos si `.env` ya está configurado; el usuario debe gestionarlos únicamente desde la interfaz local.
 3. Ejecutar `npm test` antes de modificar el flujo.
 4. Mantener la consulta limitada exclusivamente a `Pending`.
 5. Usar Playwright y una prueba visible para cualquier cambio relacionado con la web.
