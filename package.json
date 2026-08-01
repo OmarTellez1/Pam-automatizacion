@@ -1,0 +1,20 @@
+{
+  "name": "beyondinsight-login-automation",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "login": "node src/login.mjs",
+    "request-access": "node src/request-access.mjs",
+    "email:prepare": "node src/prepare-access-email.mjs",
+    "outlook:authorize": "node src/authorize-outlook.mjs",
+    "email:preview": "node src/send-access-email.mjs",
+    "email:send": "node src/send-access-email.mjs --send"
+  },
+  "dependencies": {
+    "@azure/msal-node": "^5.4.3",
+    "@azure/msal-node-extensions": "^5.3.4",
+    "playwright-core": "1.62.1"
+  }
+}

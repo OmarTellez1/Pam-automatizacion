@@ -1,0 +1,24 @@
+# Dependencias
+node_modules/
+
+# Secretos y configuración local
+.env
+.env.*
+!.env.example
+state/
+
+# Resultados y diagnósticos
+run-artifacts/
+run-results/
+.playwright-cli/
+coverage/
+*.log
+npm-debug.log*
+
+# Editores
+.vscode/
+.idea/
+
+# Sistema operativo
+Thumbs.db
+.DS_Store
