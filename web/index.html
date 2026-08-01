@@ -20,49 +20,60 @@
         <span class="local-badge"><span aria-hidden="true"></span> Solo en este equipo</span>
       </header>
 
-      <section class="hero" aria-labelledby="page-title">
-        <div class="eyebrow">Centro de automatización</div>
-        <h1 id="page-title">Gestiona tus accesos de forma simple y segura.</h1>
-        <p class="hero-copy">
-          Configura las credenciales del portal y, en la siguiente etapa, inicia las solicitudes
-          de acceso desde un solo lugar.
-        </p>
-
-        <div class="credential-state" role="status" aria-live="polite">
-          <span class="state-dot" aria-hidden="true"></span>
-          <span id="credential-status">Comprobando configuración…</span>
-        </div>
-
+      <section class="home-actions" aria-labelledby="page-title">
+        <h1 id="page-title" class="visually-hidden">Acciones de Accesos PAM</h1>
         <div class="actions" aria-label="Acciones disponibles">
           <a class="button button-primary" href="/credenciales">
-            <span>Configurar credenciales</span>
+            <span id="credentials-action-label">Configurar credenciales</span>
             <span aria-hidden="true">→</span>
           </a>
+          <a class="button button-neutral" href="/solicitud">
+            <span>Configurar solicitud</span>
+            <span aria-hidden="true">→</span>
+          </a>
+          <a class="button button-neutral" href="/correo">
+            <span>Configurar envío de correo</span>
+            <span aria-hidden="true">→</span>
+          </a>
+          <button id="final-action-toggle" class="button button-toggle" type="button"
+            aria-pressed="false" data-action="web" disabled>
+            <span id="final-action-label">Se mostrarán los IDs en esta interfaz al final</span>
+            <span class="toggle-track" aria-hidden="true"><span></span></span>
+          </button>
           <button class="button button-secondary" type="button" disabled>
             <span>Iniciar automatización</span>
             <small>Próxima etapa</small>
           </button>
         </div>
-      </section>
-
-      <section class="assurance" aria-label="Protecciones de la aplicación">
-        <article>
-          <span class="assurance-number">01</span>
-          <h2>Conexión local</h2>
-          <p>La interfaz escucha únicamente en este computador y no se publica en la red.</p>
-        </article>
-        <article>
-          <span class="assurance-number">02</span>
-          <h2>Validación inmediata</h2>
-          <p>Después de guardar, se prueba el inicio de sesión sin crear solicitudes.</p>
-        </article>
-        <article>
-          <span class="assurance-number">03</span>
-          <h2>Sin datos visibles</h2>
-          <p>Las credenciales guardadas nunca vuelven a mostrarse en la página.</p>
-        </article>
+        <p id="final-action-status" class="visually-hidden" role="status" aria-live="polite"></p>
       </section>
     </main>
+
+    <dialog id="automation-result-dialog" class="result-dialog"
+      aria-labelledby="automation-result-title" aria-describedby="automation-result-description">
+      <div class="result-dialog-header">
+        <div>
+          <span class="result-kicker">Automatización completada</span>
+          <h2 id="automation-result-title">Request ID obtenidos</h2>
+        </div>
+        <button id="close-result-dialog" class="dialog-close" type="button"
+          aria-label="Cerrar resultado">×</button>
+      </div>
+      <p id="automation-result-description" class="result-description">
+        Se obtuvieron exactamente 14 solicitudes. Puede copiar los IDs para utilizarlos donde necesite.
+      </p>
+      <ol id="automation-result-ids" class="result-ids" aria-label="Request ID obtenidos"></ol>
+      <p id="automation-result-time" class="result-time"></p>
+      <div class="result-dialog-actions">
+        <button id="copy-result-ids" class="button button-primary result-button" type="button">
+          <span>Copiar IDs</span><span aria-hidden="true">⧉</span>
+        </button>
+        <button id="dismiss-result-dialog" class="button button-neutral result-button" type="button">
+          Cerrar
+        </button>
+      </div>
+      <p id="copy-result-status" class="visually-hidden" role="status" aria-live="polite"></p>
+    </dialog>
     <script src="/app.js" defer></script>
   </body>
 </html>

@@ -23,8 +23,8 @@ El proyecto automatiza un flujo interno en BeyondInsight Password Safe, disponib
 5. Crea una solicitud de acceso de 8 horas para cada una de las 14 cuentas.
 6. Consulta exclusivamente `Requests > Pending`, sin abrir ni utilizar `Approved`.
 7. Extrae exactamente 14 `Request ID` únicos.
-8. Si el usuario respondió `S`, construye y envía el correo mediante Outlook clásico.
-9. Si respondió `N`, escribe un ID por línea y abre el resultado en el Bloc de notas.
+8. Si el toggle indica correo, construye y envía el mensaje mediante Outlook clásico.
+9. Si indica interfaz web, muestra los 14 IDs en un diálogo local con opción de copiarlos.
 
 La razón configurada actualmente es:
 
@@ -64,6 +64,8 @@ Soporte y pruebas con usuario post producción - TIC PETER GOMEZ
 ¿Desea que envié el correo por usted? S/N: 
 ```
 
+Esta pregunta fue reemplazada posteriormente por el toggle persistente de la interfaz web.
+
 - Una regresión hacía que el selector Flatpickr conservara la fecha actual al navegar a otro mes. Se corrigió abriendo primero la instancia exacta asociada a `Start Date`, posicionándola después y haciendo clic dentro de esa misma instancia.
 - Se validó visiblemente que `12/08` y `15:00` producen `August 12, 2026` y `03:00 PM`, descartando el formulario sin crear la solicitud.
 
@@ -71,7 +73,7 @@ Soporte y pruebas con usuario post producción - TIC PETER GOMEZ
 
 - Los Request ID se extraen dinámicamente de la última ejecución; nunca están fijados en el correo.
 - El contenido se genera desde `EMAIL_TEMPLATE.md` y `EMAIL_TEMPLATE.html`.
-- La tabla ya existe en la plantilla; el código solo sustituye el marcador `{{REQUEST_IDS}}` por un ID en cada línea.
+- La tabla ya existe en la plantilla; el código sustituye el marcador obligatorio `{{REQUEST_IDS}}` por un ID en cada línea.
 - El destinatario, las copias y el asunto se leen de `mail-config.json`.
 - `recipient` contiene el destinatario principal.
 - `cc` contiene tres posiciones editables; las posiciones vacías se ignoran.
@@ -86,7 +88,7 @@ Soporte y pruebas con usuario post producción - TIC PETER GOMEZ
 Existen dos lanzadores con responsabilidades deliberadamente separadas:
 
 - `INICIAR_PRUEBA.cmd`: abre la terminal y Chrome visible, completa y valida solamente el primer formulario y lo descarta. No contiene `-Execute`, no crea solicitudes, no envía correo y no abre resultados.
-- `INICIAR_AUTOMATIZACION.cmd`: es el lanzador real. Contiene `-Execute`, procesa las 14 solicitudes con Chrome oculto y ejecuta la decisión final `S/N`.
+- `INICIAR_AUTOMATIZACION.cmd`: es el lanzador real. Contiene `-Execute`, procesa las 14 solicitudes con Chrome oculto y ejecuta la acción final persistida.
 
 Durante el desarrollo, un agente nunca debe ejecutar `INICIAR_AUTOMATIZACION.cmd` ni usar `-Execute` para verificar cambios, salvo autorización inequívoca del usuario para crear solicitudes reales.
 
@@ -103,13 +105,58 @@ Durante el desarrollo, un agente nunca debe ejecutar `INICIAR_AUTOMATIZACION.cmd
 
 - Se añadió `INICIAR_INTERFAZ.cmd`, que inicia una aplicación en `http://127.0.0.1:4317` y abre automáticamente el navegador predeterminado mediante Windows Explorer.
 - La portada muestra `Configurar credenciales` y `Iniciar automatización`; el segundo botón permanece deshabilitado hasta implementar la siguiente etapa.
+- Tras simplificar el diseño, fuera del encabezado la portada contiene únicamente esos dos botones centrados. La pantalla de configuración contiene solo el formulario y muestra un aviso encima cuando las tres variables de credenciales están completas.
+- Cuando las credenciales ya están configuradas, el botón cambia a `Editar credenciales`. Los campos vacíos durante la edición conservan su valor previo, permitiendo actualizar únicamente la contraseña u otro dato individual.
+- La verificación diferencia un rechazo de usuario/contraseña de un rechazo ocurrido después de alcanzar el desafío de Microsoft Authenticator, además de conservar un mensaje separado para problemas de red o del portal.
 - El formulario solicita usuario, contraseña y clave Base32 de Microsoft Authenticator. Rechaza expresamente un código temporal de seis dígitos.
 - Los valores se guardan como `BI_USERNAME`, `BI_PASSWORD` y `BI_TOTP_SECRET` dentro de `.env`.
 - `.env` permanece excluido de Git y `.env.example` contiene únicamente valores ficticios.
 - Después del guardado se prueba el inicio de sesión en una sesión aislada y se cierra el navegador. No se crean solicitudes ni se envían correos.
 - El servidor está limitado a IPv4 loopback, rechaza Host y Origin externos, no permite leer secretos y evita dos comprobaciones simultáneas.
 - `run-login.ps1` y `run-access-requests.ps1` dejaron de descifrar archivos DPAPI y ahora consumen la configuración `.env` mediante la misma capa común.
-- Se añadieron pruebas de lectura/escritura de `.env`, rechazo del código de seis dígitos, rutas de la interfaz, guardado, protección de origen y apertura automática. La suite completa aprobó 29 pruebas.
+- Se añadieron pruebas de lectura/escritura de `.env`, rechazo del código de seis dígitos, rutas de la interfaz, guardado, protección de origen, apertura automática, edición parcial y clasificación de errores. La suite completa aprobó 32 pruebas.
+
+### 9. Configuración persistente de solicitudes
+
+- La portada contiene un botón fijo para `Configurar solicitud`; esta pantalla no muestra un aviso de configuración existente, aunque sí precarga los valores guardados.
+- La ruta `/solicitud` permite escribir y revisar fecha `dd/mm`, hora `HH:mm`, duración total en horas y razón.
+- Los valores persisten como `PAM_START_DATE`, `PAM_START_TIME`, `PAM_SESSION_HOURS` y `PAM_REQUEST_REASON` dentro del mismo `.env` local.
+- La duración admite exclusivamente enteros de 1 a 8 horas. `Days` permanece en cero y el valor se escribe directamente en `Hours`.
+- `request-access.mjs` usa esta configuración cuando está completa. Los argumentos explícitos continúan reemplazando fecha y hora; la acción final se persiste por separado en `PAM_FINAL_ACTION`.
+- La razón configurada también participa en la detección de solicitudes `Pending`, preservando la protección contra duplicados.
+- El servidor devuelve al navegador únicamente estos cuatro valores no secretos para permitir la edición; nunca devuelve las credenciales.
+- La interfaz fue validada con valores persistidos simulados sin tocar el `.env` real.
+
+### 10. Configuración persistente del correo
+
+- La portada incorpora `Configurar envío de correo` y la ruta `/correo`.
+- `Para` y `CC` admiten múltiples direcciones separadas por `;`; se rechazan direcciones inválidas o repetidas entre ambas listas.
+- El asunto y el cuerpo HTML se guardan en `.env.mail`, separado de las credenciales. Al volver al formulario se recuperan todos los valores.
+- El editor conserva texto enriquecido, tablas e imágenes pegadas. El servidor sanitiza el HTML y solo conserva imágenes locales seguras.
+- Antes de enviar, los IDs pegados se reemplazan por los 14 IDs de la ejecución actual y se actualiza la fila `Motivo del acceso` cuando existe.
+- Las imágenes se convierten en adjuntos inline CID para Outlook clásico, evitando depender del soporte de URI `data:` del cliente de correo.
+- La detección de duplicados incluye todos los destinatarios, CC, asunto, IDs y un hash del contenido definitivo.
+- El aviso y el texto `Editar credenciales` dependen únicamente de `BI_USERNAME`, `BI_PASSWORD` y `BI_TOTP_SECRET`; las configuraciones de solicitud y correo no influyen.
+- La suite completa aprobó 48 pruebas, incluida persistencia, sanitización, destinatarios múltiples, sustitución dinámica e imágenes CID.
+
+### 11. Marcador dinámico y resultado final
+
+- El contenido del correo debe incluir `{{REQUEST_IDS}}` exactamente una vez. El formulario permite insertarlo en la posición del cursor y rechaza su ausencia o duplicación.
+- Las configuraciones anteriores se migran reemplazando los IDs escritos en la celda `Solicitudes de PAM` por el marcador.
+- La portada incorpora un toggle persistente con los estados `Se generará un bloc de notas al final` y `Se enviará un correo al final`.
+- La selección se guarda como `PAM_FINAL_ACTION=notepad|email` dentro de `.env`; `notepad` es el valor predeterminado seguro.
+- `request-access.mjs` deja de preguntar `S/N` y guarda `sendEmail` a partir del toggle. PowerShell conserva la bifurcación existente entre Outlook clásico y Bloc de notas.
+- La suite completa aprobó 55 pruebas y la interfaz fue validada en Chrome visible, sin errores de consola.
+
+### 12. Resultado de IDs dentro de la web
+
+- El estado `notepad` fue reemplazado por `web`; las configuraciones existentes con `notepad` se migran automáticamente.
+- El toggle ahora dice `Se mostrarán los IDs en esta interfaz al final` o `Se enviará un correo al final`.
+- PowerShell dejó de crear `REQUEST_IDS.txt` y de abrir el Bloc de notas.
+- El servidor valida `last-run.json` y solo expone un resultado web cuando contiene exactamente 14 IDs únicos y `sendEmail` es falso.
+- La portada consulta el resultado periódicamente y abre un diálogo con los 14 IDs, la hora de finalización y acciones para copiar o cerrar.
+- La interfaz local debe permanecer abierta durante la automatización para que el diálogo aparezca automáticamente.
+- La suite completa aprobó 59 pruebas. La prueba visible confirmó el diálogo automático, los 14 IDs, la copia al portapapeles y cero errores de consola.
 
 ### 7. Migración y Git
 
@@ -127,24 +174,21 @@ El flujo funcional todavía usa:
 - Playwright Core con Google Chrome.
 - PowerShell como orquestador de los lanzadores.
 - Outlook clásico mediante COM para el envío.
-- Una interfaz de terminal para las tres preguntas.
-- Una interfaz web local para configurar y comprobar credenciales.
+- Una interfaz de terminal para fecha y hora; el resultado final se selecciona en la web.
+- Una interfaz web local para configurar credenciales, parámetros de solicitud y envío de correo.
 - `.env` para las credenciales en texto legible y excluido de Git.
-- `mail-config.json` para remitente, destinatario, copias y asunto.
+- `.env.mail` para destinatarios, copias, asunto y HTML; `mail-config.json` conserva la cuenta remitente esperada.
 
 Los resultados locales se guardan dentro de `run-results/`; los diagnósticos y capturas de fallos se guardan en `run-artifacts/`.
 
 ## Próxima dirección solicitada
 
-La primera etapa de la aplicación web local ya está implementada: portada, configuración de credenciales y prueba de inicio de sesión. La siguiente etapa es trasladar a esta interfaz la fecha, la hora, la decisión de correo, el progreso y los resultados.
+La aplicación web local ya incluye credenciales, parámetros de solicitud y contenido del correo. La siguiente etapa es integrar la decisión de envío, el inicio controlado de la automatización, el progreso y los resultados.
 
 ### Interfaz web local
 
-La página ya se sirve únicamente en `127.0.0.1` con HTML, CSS y JavaScript sin frameworks. Aún debe incorporar:
+La página ya se sirve únicamente en `127.0.0.1` con HTML, CSS y JavaScript sin frameworks. Ya incorpora fecha, hora, duración, razón y correo persistentes. Aún debe incorporar:
 
-- Campo de fecha `dd/mm` con el año de Ecuador calculado automáticamente.
-- Campo de hora `HH:mm` de 24 horas y confirmación equivalente de 12 horas.
-- Decisión `S/N` o un control visual equivalente para enviar el correo.
 - Validación clara sin cerrar la interfaz.
 - Separación muy visible entre modo de prueba y ejecución real.
 - Estado del proceso, errores comprensibles y presentación de los 14 IDs.
@@ -159,9 +203,9 @@ El almacenamiento DPAPI de las credenciales PAM fue reemplazado por un archivo `
 
 El `.env` real no se versiona. Aunque el repositorio sea privado, Git conservaría los secretos en el historial; por eso solo `.env.example`, con datos ficticios, puede incluirse en commits.
 
-### Gitignore pendiente
+### Gitignore
 
-El `.gitignore` vigente excluye `node_modules/`, `state/`, `run-artifacts/` y `run-results/`, pero su mejora quedó pendiente. Antes del próximo commit funcional se recomendó excluir también:
+El `.gitignore` vigente excluye dependencias, secretos, configuraciones locales, artefactos, cachés y archivos de editores:
 
 ```gitignore
 .playwright-cli/

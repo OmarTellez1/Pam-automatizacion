@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Configurar envío de correo · Accesos PAM</title>
+    <link rel="icon" href="data:,">
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <main class="shell shell-form">
+      <header class="topbar">
+        <a class="brand" href="/" aria-label="Volver al inicio de Accesos PAM">
+          <span class="brand-mark" aria-hidden="true">P</span>
+          <span>
+            <strong>Accesos PAM</strong>
+            <small>BeyondInsight Password Safe</small>
+          </span>
+        </a>
+        <a class="back-link" href="/">← Volver al inicio</a>
+      </header>
+
+      <section class="mail-content" aria-labelledby="page-title">
+        <h1 id="page-title" class="visually-hidden">Configurar envío de correo</h1>
+        <section class="form-card mail-card" aria-label="Formulario de configuración de correo">
+          <form id="mail-settings-form">
+            <div class="field">
+              <label for="mailTo">Para</label>
+              <input id="mailTo" name="to" type="text" required
+                placeholder="correo1@empresa.com;correo2@empresa.com">
+              <p class="field-help">Separe varias direcciones con punto y coma (;).</p>
+            </div>
+
+            <div class="field">
+              <label for="mailCc">CC</label>
+              <input id="mailCc" name="cc" type="text"
+                placeholder="copia1@empresa.com;copia2@empresa.com">
+              <p class="field-help">Este campo es opcional. Separe varias direcciones con punto y coma (;).</p>
+            </div>
+
+            <div class="field">
+              <label for="mailSubject">Asunto</label>
+              <input id="mailSubject" name="subject" type="text" maxlength="255" required>
+            </div>
+
+            <div class="field">
+              <div class="field-heading">
+                <label for="mailContent">Contenido</label>
+                <button id="insert-request-ids-marker" class="marker-button" type="button">
+                  Insertar {{REQUEST_IDS}}
+                </button>
+              </div>
+              <div id="mailContent" class="rich-editor" contenteditable="true" role="textbox"
+                aria-multiline="true" aria-label="Contenido del correo" spellcheck="true"></div>
+              <p class="field-help">
+                Incluya {{REQUEST_IDS}} exactamente una vez. Al finalizar, se reemplazará por los
+                14 ID obtenidos. Puede pegar texto, tablas e imágenes.
+              </p>
+            </div>
+
+            <div id="mail-settings-result" class="form-result" role="status"
+              aria-live="polite" hidden></div>
+
+            <button id="save-mail-settings" class="button button-primary button-submit" type="submit">
+              <span>Guardar configuración</span>
+              <span aria-hidden="true">→</span>
+            </button>
+          </form>
+        </section>
+      </section>
+    </main>
+    <script src="/mail-settings.js" defer></script>
+  </body>
+</html>

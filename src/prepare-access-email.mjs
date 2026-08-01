@@ -1,10 +1,12 @@
+import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { generateAccessEmailArtifacts } from "./email-content.mjs";
+import { materializeInlineImages } from "./email-content.mjs";
+import { loadMailSettings } from "./mail-settings.mjs";
 import {
   extractValidatedRequestIds,
-  normalizeCcRecipients,
   validateEmailAddress,
 } from "./outlook-email.mjs";
 
@@ -15,30 +17,35 @@ const configPath = path.join(projectDirectory, "mail-config.json");
 const manifestPath = path.join(resultsDirectory, "email-manifest.json");
 
 export async function prepareAccessEmail() {
-  const [result, config] = await Promise.all([
+  const [result, config, mailSettings] = await Promise.all([
     readFile(resultPath, "utf8").then(JSON.parse),
     readFile(configPath, "utf8").then(JSON.parse),
+    loadMailSettings(),
   ]);
   const requestIds = extractValidatedRequestIds(result);
   const sender = validateEmailAddress(config.sender, "sender");
-  const recipient = validateEmailAddress(config.recipient, "recipient");
-  const ccRecipients = normalizeCcRecipients(config.cc);
-  if (ccRecipients.some((address) => address.toLowerCase() === recipient.toLowerCase())) {
-    throw new Error("El destinatario principal no debe repetirse en cc.");
-  }
-  const subject = String(config.subject ?? "").trim();
-  if (!subject) throw new Error("El asunto del correo es obligatorio.");
+  const { toRecipients, ccRecipients, subject, contentHtml } = mailSettings;
 
-  const artifacts = await generateAccessEmailArtifacts(requestIds);
+  const artifacts = await generateAccessEmailArtifacts(requestIds, {
+    htmlTemplate: contentHtml,
+    requestReason: result.reason,
+  });
+  const originalHtml = await readFile(artifacts.htmlPath, "utf8");
+  const converted = await materializeInlineImages(originalHtml);
+  await writeFile(artifacts.htmlPath, converted.html, "utf8");
+  const contentHash = createHash("sha256").update(converted.html).digest("hex");
   const manifest = {
     preparedAt: new Date().toISOString(),
     sender,
-    recipient,
+    recipient: toRecipients[0],
+    toRecipients,
     ccRecipients,
     subject,
     requestDate: result.date,
     startTime: result.startTime,
     requestIds,
+    inlineImages: converted.inlineImages,
+    contentHash,
     ...artifacts,
   };
   await mkdir(resultsDirectory, { recursive: true });

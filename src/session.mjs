@@ -82,6 +82,7 @@ export async function openAuthenticatedSession(options = {}) {
   });
 
   const page = await context.newPage();
+  let authenticationStage = "portal";
 
   try {
     await page.goto(LOGIN_URL, { waitUntil: "domcontentloaded" });
@@ -112,12 +113,14 @@ export async function openAuthenticatedSession(options = {}) {
       "Log In",
     );
     await loginButton.click();
+    authenticationStage = "primary_credentials";
 
     const responseField = page.getByRole("textbox", {
       name: "Enter Response",
       exact: true,
     });
     await responseField.waitFor({ state: "visible", timeout: 30_000 });
+    authenticationStage = "totp";
     await waitForSafeTotpWindow();
     await responseField.fill(generateTotp(credentials.totpSecret));
 
@@ -130,6 +133,7 @@ export async function openAuthenticatedSession(options = {}) {
       (url) => url.origin === TARGET_ORIGIN && !url.pathname.includes("/login"),
       { timeout: 30_000, waitUntil: "domcontentloaded" },
     );
+    authenticationStage = "confirmation";
 
     const dashboardLink = page.getByRole("link", {
       name: "Return to dashboard",
@@ -141,6 +145,7 @@ export async function openAuthenticatedSession(options = {}) {
 
     return { browser, context, page };
   } catch (error) {
+    error.authenticationStage ??= authenticationStage;
     error.page = page;
     error.browser = browser;
     throw error;

@@ -1,6 +1,41 @@
 const form = document.querySelector("#credentials-form");
 const submitButton = document.querySelector("#save-button");
 const resultElement = document.querySelector("#form-result");
+const configuredMessage = document.querySelector("#configured-message");
+const credentialInputs = [
+  form.elements.username,
+  form.elements.password,
+  form.elements.totpSecret,
+];
+let submitLabel = "Guardar y probar acceso";
+
+function applyConfiguredState(configured) {
+  configuredMessage.hidden = !configured;
+  for (const input of credentialInputs) input.required = !configured;
+
+  form.elements.username.placeholder = configured
+    ? "Dejar vacío para conservar el usuario"
+    : "Escribe tu usuario";
+  form.elements.password.placeholder = configured
+    ? "Dejar vacío para conservar la contraseña"
+    : "Escribe tu contraseña";
+  form.elements.totpSecret.placeholder = configured
+    ? "Dejar vacío para conservar la clave"
+    : "Clave Base32 de enrolamiento";
+  submitLabel = configured ? "Guardar cambios y probar acceso" : "Guardar y probar acceso";
+  submitButton.querySelector("span:first-child").textContent = submitLabel;
+}
+
+async function loadCredentialStatus() {
+  try {
+    const response = await fetch("/api/credentials/status", { cache: "no-store" });
+    if (!response.ok) return;
+    const result = await response.json();
+    applyConfiguredState(result.configured);
+  } catch {
+    applyConfiguredState(false);
+  }
+}
 
 for (const button of document.querySelectorAll("[data-reveal]")) {
   button.addEventListener("click", () => {
@@ -42,8 +77,12 @@ form.addEventListener("submit", async (event) => {
       body: JSON.stringify(payload),
     });
     const result = await response.json();
-    showResult(response.ok ? "success" : result.configured ? "warning" : "error", result.message);
-    if (response.ok) {
+    showResult(
+      result.verified ? "success" : result.configured ? "warning" : "error",
+      result.message,
+    );
+    if (result.configured) applyConfiguredState(true);
+    if (result.verified) {
       form.elements.password.value = "";
       form.elements.totpSecret.value = "";
     }
@@ -54,6 +93,8 @@ form.addEventListener("submit", async (event) => {
     payload.totpSecret = "";
     submitButton.disabled = false;
     submitButton.classList.remove("is-loading");
-    submitButton.querySelector("span:first-child").textContent = "Guardar y probar acceso";
+    submitButton.querySelector("span:first-child").textContent = submitLabel;
   }
 });
+
+loadCredentialStatus();

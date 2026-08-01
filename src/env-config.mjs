@@ -76,6 +76,19 @@ function serializeEnv(values) {
   ].join("\n");
 }
 
+async function persistProjectEnvironment(values, envPath) {
+  const temporaryPath = `${envPath}.${process.pid}.tmp`;
+  const contents = serializeEnv(values);
+
+  await writeFile(temporaryPath, contents, { encoding: "utf8", mode: 0o600 });
+  try {
+    await rename(temporaryPath, envPath);
+  } catch {
+    await writeFile(envPath, contents, { encoding: "utf8", mode: 0o600 });
+    await rm(temporaryPath, { force: true });
+  }
+}
+
 export function validateCredentials(input) {
   const username = String(input?.username ?? "").trim();
   const password = String(input?.password ?? "");
@@ -129,26 +142,29 @@ export async function credentialsAreConfigured(envPath = defaultEnvPath) {
   }
 }
 
+export async function updateProjectEnvironment(updates, options = {}) {
+  const envPath = options.envPath ?? defaultEnvPath;
+  const currentValues = await readProjectEnvironment(envPath);
+  const nextValues = { ...currentValues, ...updates };
+  await persistProjectEnvironment(nextValues, envPath);
+  return nextValues;
+}
+
 export async function writeProjectCredentials(input, options = {}) {
   const envPath = options.envPath ?? defaultEnvPath;
-  const credentials = validateCredentials(input);
   const currentValues = await readProjectEnvironment(envPath);
+  const credentials = validateCredentials({
+    username: String(input?.username ?? "").trim() || currentValues.BI_USERNAME,
+    password: String(input?.password ?? "") || currentValues.BI_PASSWORD,
+    totpSecret: String(input?.totpSecret ?? "").trim() || currentValues.BI_TOTP_SECRET,
+  });
   const nextValues = {
     ...currentValues,
     BI_USERNAME: credentials.username,
     BI_PASSWORD: credentials.password,
     BI_TOTP_SECRET: credentials.totpSecret,
   };
-  const temporaryPath = `${envPath}.${process.pid}.tmp`;
-  const contents = serializeEnv(nextValues);
-
-  await writeFile(temporaryPath, contents, { encoding: "utf8", mode: 0o600 });
-  try {
-    await rename(temporaryPath, envPath);
-  } catch {
-    await writeFile(envPath, contents, { encoding: "utf8", mode: 0o600 });
-    await rm(temporaryPath, { force: true });
-  }
+  await persistProjectEnvironment(nextValues, envPath);
 
   return credentials;
 }

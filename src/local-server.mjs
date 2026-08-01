@@ -11,6 +11,23 @@ import {
   writeProjectCredentials,
 } from "./env-config.mjs";
 import { openAuthenticatedSession, saveFailureArtifact } from "./session.mjs";
+import {
+  getRequestSettingsState,
+  writeRequestSettings,
+} from "./request-settings.mjs";
+import {
+  defaultMailEnvPath,
+  getMailSettingsState,
+  writeMailSettings,
+} from "./mail-settings.mjs";
+import {
+  getFinalActionState,
+  writeFinalAction,
+} from "./final-action.mjs";
+import {
+  defaultAutomationResultPath,
+  getLatestAutomationResult,
+} from "./automation-result.mjs";
 
 const HOST = "127.0.0.1";
 const DEFAULT_PORT = 4317;
@@ -18,9 +35,13 @@ const staticDirectory = path.join(projectDirectory, "web");
 const routeFiles = new Map([
   ["/", "index.html"],
   ["/credenciales", "credentials.html"],
+  ["/solicitud", "request-settings.html"],
+  ["/correo", "mail-settings.html"],
   ["/styles.css", "styles.css"],
   ["/app.js", "app.js"],
   ["/credentials.js", "credentials.js"],
+  ["/request-settings.js", "request-settings.js"],
+  ["/mail-settings.js", "mail-settings.js"],
 ]);
 const contentTypes = {
   ".html": "text/html; charset=utf-8",
@@ -39,7 +60,7 @@ function setSecurityHeaders(response) {
     "img-src 'self' data:",
     "object-src 'none'",
     "script-src 'self'",
-    "style-src 'self'",
+    "style-src 'self' 'unsafe-inline'",
   ].join("; "));
   response.setHeader("Cross-Origin-Opener-Policy", "same-origin");
   response.setHeader("Referrer-Policy", "no-referrer");
@@ -62,12 +83,12 @@ function requestIsSameOrigin(request) {
   return request.headers.origin === `http://${request.headers.host}`;
 }
 
-async function readJsonBody(request) {
+async function readJsonBody(request, maxBytes = 16_384) {
   let size = 0;
   const chunks = [];
   for await (const chunk of request) {
     size += chunk.length;
-    if (size > 16_384) {
+    if (size > maxBytes) {
       const error = new Error("La solicitud es demasiado grande.");
       error.statusCode = 413;
       throw error;
@@ -98,10 +119,28 @@ async function verifyLogin(credentials) {
   }
 }
 
+export function describeAuthenticationFailure(error) {
+  if (error?.authenticationStage === "primary_credentials") {
+    return "El portal no aceptó el usuario o la contraseña. Revise ambos datos e inténtelo nuevamente.";
+  }
+  if (error?.authenticationStage === "totp") {
+    return "El usuario y la contraseña fueron aceptados, pero el código de Microsoft Authenticator no fue válido. Revise la clave Base32 y la hora del equipo.";
+  }
+  if (error?.authenticationStage === "confirmation") {
+    return "El portal procesó las credenciales, pero no confirmó el inicio de sesión. Inténtelo nuevamente o revise el estado del portal.";
+  }
+  return "No fue posible conectar o completar el inicio de sesión. Revise la conexión a la red o VPN y vuelva a intentarlo.";
+}
+
 export function createLocalServer(options = {}) {
   const envPath = options.envPath ?? defaultEnvPath;
+  const mailEnvPath = options.mailEnvPath ?? defaultMailEnvPath;
+  const automationResultPath = options.automationResultPath ?? defaultAutomationResultPath;
   const authenticate = options.authenticate ?? verifyLogin;
   let credentialTestInProgress = false;
+  let requestSettingsWriteInProgress = false;
+  let mailSettingsWriteInProgress = false;
+  let finalActionWriteInProgress = false;
 
   return http.createServer(async (request, response) => {
     try {
@@ -114,6 +153,28 @@ export function createLocalServer(options = {}) {
 
       if (request.method === "GET" && url.pathname === "/api/credentials/status") {
         sendJson(response, 200, { configured: await credentialsAreConfigured(envPath) });
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/request-settings") {
+        sendJson(response, 200, await getRequestSettingsState({ envPath }));
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/mail-settings") {
+        sendJson(response, 200, await getMailSettingsState({ envPath: mailEnvPath }));
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/final-action") {
+        sendJson(response, 200, await getFinalActionState({ envPath }));
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/automation-result") {
+        sendJson(response, 200, await getLatestAutomationResult({
+          resultPath: automationResultPath,
+        }));
         return;
       }
 
@@ -143,16 +204,107 @@ export function createLocalServer(options = {}) {
               verified: true,
               message: "Credenciales guardadas. El inicio de sesión se comprobó correctamente.",
             });
-          } catch {
-            sendJson(response, 422, {
+          } catch (error) {
+            sendJson(response, 200, {
               configured: true,
               verified: false,
-              message:
-                "Las credenciales se guardaron, pero no fue posible iniciar sesión. Revise los datos y la conexión a la red o VPN.",
+              message: describeAuthenticationFailure(error),
             });
           }
         } finally {
           credentialTestInProgress = false;
+        }
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/request-settings") {
+        if (!requestIsSameOrigin(request)) {
+          sendJson(response, 403, { message: "Origen de solicitud no permitido." });
+          return;
+        }
+        if (!String(request.headers["content-type"] ?? "").startsWith("application/json")) {
+          sendJson(response, 415, { message: "El contenido debe enviarse como JSON." });
+          return;
+        }
+        if (requestSettingsWriteInProgress) {
+          sendJson(response, 409, {
+            message: "Ya se está guardando otra configuración de solicitud.",
+          });
+          return;
+        }
+
+        requestSettingsWriteInProgress = true;
+        try {
+          const settings = await writeRequestSettings(await readJsonBody(request), { envPath });
+          sendJson(response, 200, {
+            configured: true,
+            settings,
+            message: "Configuración de solicitud guardada correctamente.",
+          });
+        } finally {
+          requestSettingsWriteInProgress = false;
+        }
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/mail-settings") {
+        if (!requestIsSameOrigin(request)) {
+          sendJson(response, 403, { message: "Origen de solicitud no permitido." });
+          return;
+        }
+        if (!String(request.headers["content-type"] ?? "").startsWith("application/json")) {
+          sendJson(response, 415, { message: "El contenido debe enviarse como JSON." });
+          return;
+        }
+        if (mailSettingsWriteInProgress) {
+          sendJson(response, 409, {
+            message: "Ya se está guardando otra configuración de correo.",
+          });
+          return;
+        }
+
+        mailSettingsWriteInProgress = true;
+        try {
+          const settings = await writeMailSettings(
+            await readJsonBody(request, 12_000_000),
+            { envPath: mailEnvPath },
+          );
+          sendJson(response, 200, {
+            configured: true,
+            settings,
+            message: "Configuración de correo guardada correctamente.",
+          });
+        } finally {
+          mailSettingsWriteInProgress = false;
+        }
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/final-action") {
+        if (!requestIsSameOrigin(request)) {
+          sendJson(response, 403, { message: "Origen de solicitud no permitido." });
+          return;
+        }
+        if (!String(request.headers["content-type"] ?? "").startsWith("application/json")) {
+          sendJson(response, 415, { message: "El contenido debe enviarse como JSON." });
+          return;
+        }
+        if (finalActionWriteInProgress) {
+          sendJson(response, 409, { message: "Ya se está cambiando la acción final." });
+          return;
+        }
+
+        finalActionWriteInProgress = true;
+        try {
+          const input = await readJsonBody(request);
+          const action = await writeFinalAction(input.action, { envPath });
+          sendJson(response, 200, {
+            action,
+            sendEmail: action === "email",
+            message: "Acción final guardada correctamente.",
+          });
+        } finally {
+          finalActionWriteInProgress = false;
         }
         return;
       }

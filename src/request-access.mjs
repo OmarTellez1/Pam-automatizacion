@@ -15,6 +15,8 @@ import {
   requestKey,
   validateStartTime,
 } from "./request-config.mjs";
+import { loadRequestSettings } from "./request-settings.mjs";
+import { finalActionSendsEmail, loadFinalAction } from "./final-action.mjs";
 import {
   TARGET_ORIGIN,
   isEnabled,
@@ -47,11 +49,27 @@ async function parseArguments(argv) {
     else throw new Error(`Argumento desconocido: ${argument}`);
   }
 
+  let storedSettings;
+  try {
+    storedSettings = await loadRequestSettings();
+  } catch {
+    storedSettings = undefined;
+  }
+  result.dateInput ??= storedSettings?.startDate;
+  result.startTime ??= storedSettings?.startTime;
+  result.sessionHours = storedSettings?.sessionHours ?? DEFAULT_HOURS;
+  result.durationDays = storedSettings?.durationDays ?? 0;
+  result.durationHours = storedSettings?.durationHours ?? DEFAULT_HOURS;
+  result.reason = storedSettings?.reason ?? DEFAULT_REASON;
+  if (result.emailInput === undefined) {
+    result.sendEmail = finalActionSendsEmail(await loadFinalAction());
+  }
+
   let terminal;
   try {
-    if (!result.dateInput || !result.startTime || !result.emailInput) {
+    if (!result.dateInput || !result.startTime) {
       if (!process.stdin.isTTY || !process.stdout.isTTY) {
-        throw new Error("Faltan --date dd/mm, --time HH:mm y/o --email S|N para una ejecución no interactiva.");
+        throw new Error("Faltan --date dd/mm y/o --time HH:mm para una ejecución no interactiva.");
       }
       terminal = createInterface({ input: process.stdin, output: process.stdout });
       terminal.on("SIGINT", cancelAutomation);
@@ -67,13 +85,6 @@ async function parseArguments(argv) {
           terminal,
           "¿A qué hora desea solicitar los permisos? Formato HH:mm de 24 horas: ",
           validateStartTime,
-        );
-      }
-      if (!result.emailInput) {
-        result.sendEmail = await promptUntilValid(
-          terminal,
-          "¿Desea que envié el correo por usted? S/N: ",
-          parseYesNo,
         );
       }
     }
@@ -93,7 +104,11 @@ async function parseArguments(argv) {
   console.log(
     `Hora confirmada: ${formatTime12Hour(result.startTime)} (${result.startTime} en formato de 24 horas)`,
   );
-  console.log(`Enviar correo al finalizar: ${result.sendEmail ? "Sí" : "No"}`);
+  console.log(
+    result.sendEmail
+      ? "Resultado final: se enviará un correo."
+      : "Resultado final: los ID se mostrarán en la interfaz web.",
+  );
   return result;
 }
 
@@ -179,7 +194,7 @@ async function readPendingRequests(page) {
 function desiredRequests(requests, options) {
   const release = expectedReleaseText(options.date, options.startTime);
   return requests.filter(
-    (request) => request.release === release && request.reason === DEFAULT_REASON,
+    (request) => request.release === release && request.reason === options.reason,
   );
 }
 
@@ -281,10 +296,10 @@ async function fillRequestForm(page, options) {
   if ((await startTime.inputValue()) !== options.startTime) {
     await startTime.fill(options.startTime);
   }
-  await days.fill("0");
-  await hours.fill(String(DEFAULT_HOURS));
+  await days.fill(String(options.durationDays));
+  await hours.fill(String(options.durationHours));
   await minutes.fill("0");
-  await reason.fill(DEFAULT_REASON);
+  await reason.fill(options.reason);
 
   const applicationSession = page.getByRole("switch", {
     name: "Application Session",
@@ -314,10 +329,10 @@ async function fillRequestForm(page, options) {
   const expected = {
     date: expectedDate,
     time: options.startTime,
-    days: "0",
-    hours: String(DEFAULT_HOURS),
+    days: String(options.durationDays),
+    hours: String(options.durationHours),
     minutes: "0",
-    reason: DEFAULT_REASON,
+    reason: options.reason,
   };
   if (JSON.stringify(actual) !== JSON.stringify(expected)) {
     throw new Error(`El formulario no conservó los valores esperados: ${JSON.stringify(actual)}`);
@@ -400,10 +415,11 @@ try {
     const pending = desiredRequests(await readPendingRequests(page), options);
     const uniqueIds = [...new Set(pending.map((request) => request.id))];
     const result = {
+      completedAt: new Date().toISOString(),
       date: options.date,
       startTime: options.startTime,
-      hours: DEFAULT_HOURS,
-      reason: DEFAULT_REASON,
+      hours: options.sessionHours,
+      reason: options.reason,
       submitted,
       pending,
       requestIds: uniqueIds,

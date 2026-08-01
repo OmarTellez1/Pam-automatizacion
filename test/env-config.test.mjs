@@ -10,6 +10,7 @@ import {
   parseEnv,
   validateCredentials,
   writeProjectCredentials,
+  updateProjectEnvironment,
 } from "../src/env-config.mjs";
 
 test("interpreta valores .env entre comillas sin perder caracteres especiales", () => {
@@ -41,4 +42,39 @@ test("rechaza un código temporal de seis dígitos como secreto TOTP", () => {
     () => validateCredentials({ username: "u", password: "p", totpSecret: "234567" }),
     /no el código temporal de 6 dígitos/,
   );
+});
+
+test("permite actualizar solo la contraseña y conserva las otras credenciales", async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), "pam-env-partial-"));
+  const envPath = path.join(directory, ".env");
+  await writeProjectCredentials({
+    username: "usuario.original",
+    password: "contraseña-original",
+    totpSecret: "JBSWY3DPEHPK3PXP",
+  }, { envPath });
+
+  await writeProjectCredentials({
+    username: "",
+    password: "contraseña-nueva",
+    totpSecret: "",
+  }, { envPath });
+
+  assert.deepEqual(await loadProjectCredentials({ envPath }), {
+    username: "usuario.original",
+    password: "contraseña-nueva",
+    totpSecret: "JBSWY3DPEHPK3PXP",
+  });
+});
+
+test("no considera la solicitud ni el correo como credenciales configuradas", async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), "pam-env-non-credentials-"));
+  const envPath = path.join(directory, ".env");
+  await updateProjectEnvironment({
+    PAM_START_DATE: "03/08",
+    PAM_REQUEST_REASON: "Prueba",
+    PAM_MAIL_TO: "persona@example.com",
+    PAM_FINAL_ACTION: "email",
+  }, { envPath });
+
+  assert.equal(await credentialsAreConfigured(envPath), false);
 });

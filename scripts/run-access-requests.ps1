@@ -49,18 +49,11 @@ try {
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
         }
         else {
-            $idsPath = Join-Path $projectDirectory 'run-results\REQUEST_IDS.txt'
-            @($requestIds | ForEach-Object { [string]$_ }) | Set-Content -LiteralPath $idsPath -Encoding UTF8
-            $notepadPath = Join-Path $env:SystemRoot 'System32\notepad.exe'
-            if (-not (Test-Path -LiteralPath $notepadPath)) {
-                throw "No se encontró Bloc de notas en $notepadPath"
-            }
-            Start-Process -FilePath $notepadPath -ArgumentList ('"{0}"' -f $idsPath)
-            Write-Host "Request ID abiertos en Bloc de notas: $idsPath"
+            Write-Host 'Los Request ID están disponibles en la interfaz web local.'
         }
     }
     else {
-        Write-Host 'Modo de prueba: no se envió correo ni se abrió Bloc de notas con Request ID.'
+        Write-Host 'Modo de prueba: no se envió correo ni se publicó un resultado web.'
     }
     exit 0
 }

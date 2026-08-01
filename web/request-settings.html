@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Configurar solicitud · Accesos PAM</title>
+    <link rel="icon" href="data:,">
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <main class="shell shell-form">
+      <header class="topbar">
+        <a class="brand" href="/" aria-label="Volver al inicio de Accesos PAM">
+          <span class="brand-mark" aria-hidden="true">P</span>
+          <span>
+            <strong>Accesos PAM</strong>
+            <small>BeyondInsight Password Safe</small>
+          </span>
+        </a>
+        <a class="back-link" href="/">← Volver al inicio</a>
+      </header>
+
+      <section class="credentials-content" aria-labelledby="page-title">
+        <h1 id="page-title" class="visually-hidden">Configurar solicitud</h1>
+        <section class="form-card" aria-label="Formulario de configuración de solicitud">
+          <form id="request-settings-form">
+            <div class="field">
+              <label for="startDate">Fecha de inicio</label>
+              <input id="startDate" name="startDate" type="text" inputmode="numeric"
+                maxlength="5" pattern="[0-9]{2}/[0-9]{2}" required placeholder="dd/mm">
+            </div>
+
+            <div class="field">
+              <label for="startTime">Hora de inicio</label>
+              <input id="startTime" name="startTime" type="text" inputmode="numeric"
+                maxlength="5" pattern="([01][0-9]|2[0-3]):[0-5][0-9]" required placeholder="HH:mm">
+            </div>
+
+            <div class="field">
+              <label for="sessionHours">Duración de la sesión en horas</label>
+              <input id="sessionHours" name="sessionHours" type="number"
+                min="1" max="8" step="1" required>
+            </div>
+
+            <div class="field">
+              <label for="reason">Razón de la petición</label>
+              <textarea id="reason" name="reason" maxlength="1000" required></textarea>
+            </div>
+
+            <div id="request-settings-result" class="form-result" role="status"
+              aria-live="polite" hidden></div>
+
+            <button id="save-request-settings" class="button button-primary button-submit" type="submit">
+              <span>Guardar configuración</span>
+              <span aria-hidden="true">→</span>
+            </button>
+          </form>
+        </section>
+      </section>
+    </main>
+    <script src="/request-settings.js" defer></script>
+  </body>
+</html>

@@ -35,10 +35,13 @@ function Test-SameEmailAddresses {
 
 if ($Send -and -not $Force -and (Test-Path -LiteralPath $lastEmailPath)) {
     $lastEmail = Get-Content -Raw -LiteralPath $lastEmailPath | ConvertFrom-Json
-    $sameRecipient = ([string]$lastEmail.recipient).Equals([string]$manifest.recipient, [StringComparison]::OrdinalIgnoreCase)
+    $lastEmailRecipients = if ($lastEmail.toRecipients) { @($lastEmail.toRecipients) } elseif ($lastEmail.recipient) { @($lastEmail.recipient) } else { @() }
+    $sameRecipients = Test-SameEmailAddresses $lastEmailRecipients $manifest.toRecipients
     $sameCc = Test-SameEmailAddresses $lastEmail.ccRecipients $manifest.ccRecipients
     $sameSubject = ([string]$lastEmail.subject -eq [string]$manifest.subject)
-    if ($sameRecipient -and $sameCc -and $sameSubject -and (Test-SameRequestIds $lastEmail.requestIds $manifest.requestIds)) {
+    $hasRecordedContentHash = $lastEmail.PSObject.Properties.Name -contains 'contentHash'
+    $sameContent = (-not $hasRecordedContentHash) -or ([string]$lastEmail.contentHash -eq [string]$manifest.contentHash)
+    if ($sameRecipients -and $sameCc -and $sameSubject -and $sameContent -and (Test-SameRequestIds $lastEmail.requestIds $manifest.requestIds)) {
         throw 'Este mismo conjunto de 14 ID ya fue enviado. Use -Force solo si el reenvío es intencional.'
     }
 }
@@ -61,10 +64,12 @@ try {
     $reusedDraft = $false
     if ($Send -and (Test-Path -LiteralPath $lastDraftPath)) {
         $lastDraft = Get-Content -Raw -LiteralPath $lastDraftPath | ConvertFrom-Json
-        $sameDraftRecipient = ([string]$lastDraft.recipient).Equals([string]$manifest.recipient, [StringComparison]::OrdinalIgnoreCase)
+        $sameDraftRecipients = Test-SameEmailAddresses $lastDraft.toRecipients $manifest.toRecipients
         $sameDraftCc = Test-SameEmailAddresses $lastDraft.ccRecipients $manifest.ccRecipients
         $sameDraftSubject = ([string]$lastDraft.subject -eq [string]$manifest.subject)
-        if ($sameDraftRecipient -and $sameDraftCc -and $sameDraftSubject -and (Test-SameRequestIds $lastDraft.requestIds $manifest.requestIds)) {
+        $hasDraftContentHash = $lastDraft.PSObject.Properties.Name -contains 'contentHash'
+        $sameDraftContent = $hasDraftContentHash -and ([string]$lastDraft.contentHash -eq [string]$manifest.contentHash)
+        if ($sameDraftRecipients -and $sameDraftCc -and $sameDraftSubject -and $sameDraftContent -and (Test-SameRequestIds $lastDraft.requestIds $manifest.requestIds)) {
             try {
                 $mail = $namespace.GetItemFromID([string]$lastDraft.entryId)
                 if ($mail.Sent) {
@@ -81,9 +86,26 @@ try {
 
     if (-not $mail) { $mail = $outlook.CreateItem(0) }
     $mail.SendUsingAccount = $account
-    $mail.To = [string]$manifest.recipient
+    $mail.To = (@($manifest.toRecipients) -join ';')
     $mail.CC = (@($manifest.ccRecipients) -join ';')
     $mail.Subject = [string]$manifest.subject
+    if (-not $reusedDraft) {
+        foreach ($inlineImage in @($manifest.inlineImages)) {
+            $attachment = $null
+            $propertyAccessor = $null
+            try {
+                $attachment = $mail.Attachments.Add([string]$inlineImage.path)
+                $propertyAccessor = $attachment.PropertyAccessor
+                $propertyAccessor.SetProperty('http://schemas.microsoft.com/mapi/proptag/0x3712001F', [string]$inlineImage.contentId)
+                $propertyAccessor.SetProperty('http://schemas.microsoft.com/mapi/proptag/0x370E001F', [string]$inlineImage.mimeType)
+                $propertyAccessor.SetProperty('http://schemas.microsoft.com/mapi/proptag/0x37140003', 4)
+                $propertyAccessor.SetProperty('http://schemas.microsoft.com/mapi/proptag/0x7FFE000B', $true)
+            } finally {
+                if ($propertyAccessor) { [void][Runtime.InteropServices.Marshal]::ReleaseComObject($propertyAccessor) }
+                if ($attachment) { [void][Runtime.InteropServices.Marshal]::ReleaseComObject($attachment) }
+            }
+        }
+    }
     $mail.HTMLBody = Get-Content -Raw -LiteralPath ([string]$manifest.htmlPath)
 
     if ($Send) {
@@ -92,9 +114,10 @@ try {
             acceptedAt = [DateTimeOffset]::UtcNow.ToString('o')
             transport = 'OutlookClassicCOM'
             sender = [string]$manifest.sender
-            recipient = [string]$manifest.recipient
+            toRecipients = @($manifest.toRecipients)
             ccRecipients = @($manifest.ccRecipients)
             subject = [string]$manifest.subject
+            contentHash = [string]$manifest.contentHash
             requestDate = [string]$manifest.requestDate
             startTime = [string]$manifest.startTime
             requestIds = @($manifest.requestIds)
@@ -110,9 +133,10 @@ try {
             transport = 'OutlookClassicCOM'
             entryId = [string]$mail.EntryID
             sender = [string]$manifest.sender
-            recipient = [string]$manifest.recipient
+            toRecipients = @($manifest.toRecipients)
             ccRecipients = @($manifest.ccRecipients)
             subject = [string]$manifest.subject
+            contentHash = [string]$manifest.contentHash
             requestIds = @($manifest.requestIds)
         }
         $draft | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $lastDraftPath -Encoding UTF8
