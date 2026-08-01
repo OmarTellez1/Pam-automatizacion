@@ -29,6 +29,7 @@ import {
   getLatestAutomationResult,
 } from "./automation-result.mjs";
 import { initializeLocalConfigurationFiles } from "./configuration-bootstrap.mjs";
+import { createAutomationController } from "./automation-runner.mjs";
 
 const HOST = "127.0.0.1";
 const DEFAULT_PORT = 4317;
@@ -138,6 +139,11 @@ export function createLocalServer(options = {}) {
   const mailEnvPath = options.mailEnvPath ?? defaultMailEnvPath;
   const automationResultPath = options.automationResultPath ?? defaultAutomationResultPath;
   const authenticate = options.authenticate ?? verifyLogin;
+  const automationController = options.automationController ?? createAutomationController({
+    envPath,
+    mailEnvPath,
+    runner: options.automationRunner,
+  });
   let credentialTestInProgress = false;
   let requestSettingsWriteInProgress = false;
   let mailSettingsWriteInProgress = false;
@@ -179,6 +185,25 @@ export function createLocalServer(options = {}) {
         return;
       }
 
+      if (request.method === "GET" && url.pathname === "/api/automation/status") {
+        sendJson(response, 200, await automationController.getStatus());
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/automation/start") {
+        if (!requestIsSameOrigin(request)) {
+          sendJson(response, 403, { message: "Origen de solicitud no permitido." });
+          return;
+        }
+        if (!String(request.headers["content-type"] ?? "").startsWith("application/json")) {
+          sendJson(response, 415, { message: "El contenido debe enviarse como JSON." });
+          return;
+        }
+        const input = await readJsonBody(request);
+        sendJson(response, 202, await automationController.start(input.mode));
+        return;
+      }
+
       if (request.method === "POST" && url.pathname === "/api/credentials") {
         if (!requestIsSameOrigin(request)) {
           sendJson(response, 403, { message: "Origen de solicitud no permitido." });
@@ -203,7 +228,7 @@ export function createLocalServer(options = {}) {
             sendJson(response, 200, {
               configured: true,
               verified: true,
-              message: "Credenciales guardadas. El inicio de sesión se comprobó correctamente.",
+              message: "Credenciales del PAM guardadas. El inicio de sesión se comprobó correctamente.",
             });
           } catch (error) {
             sendJson(response, 200, {

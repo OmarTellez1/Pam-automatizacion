@@ -15,12 +15,30 @@ async function withServer(callback) {
   const mailEnvPath = path.join(directory, ".env.mail");
   const automationResultPath = path.join(directory, "last-run.json");
   const testedCredentials = [];
+  const automationStarts = [];
   const server = createLocalServer({
     envPath,
     mailEnvPath,
     automationResultPath,
     authenticate: async (credentials) => {
       testedCredentials.push(credentials);
+    },
+    automationController: {
+      getStatus: async () => ({
+        state: "idle",
+        mode: null,
+        message: "La automatización está lista.",
+        testButtonEnabled: true,
+      }),
+      start: async (mode) => {
+        automationStarts.push(mode);
+        return {
+          state: "running",
+          mode,
+          message: "Automatización iniciada.",
+          testButtonEnabled: true,
+        };
+      },
     },
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -30,6 +48,7 @@ async function withServer(callback) {
       baseUrl: `http://127.0.0.1:${port}`,
       testedCredentials,
       automationResultPath,
+      automationStarts,
     });
   } finally {
     await new Promise((resolve, reject) =>
@@ -42,10 +61,27 @@ test("sirve la interfaz local y no expone credenciales en el estado", async () =
   await withServer(async ({ baseUrl }) => {
     const page = await fetch(`${baseUrl}/`);
     assert.equal(page.status, 200);
-    assert.match(await page.text(), /Configurar credenciales/);
+    assert.match(await page.text(), /Configurar credenciales del PAM/);
 
     const status = await fetch(`${baseUrl}/api/credentials/status`);
     assert.deepEqual(await status.json(), { configured: false });
+  });
+});
+
+test("expone el botón de prueba e inicia cada modo mediante la API local", async () => {
+  await withServer(async ({ baseUrl, automationStarts }) => {
+    const status = await fetch(`${baseUrl}/api/automation/status`).then((response) => response.json());
+    assert.equal(status.testButtonEnabled, true);
+
+    for (const mode of ["test", "real"]) {
+      const response = await fetch(`${baseUrl}/api/automation/start`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Origin: baseUrl },
+        body: JSON.stringify({ mode }),
+      });
+      assert.equal(response.status, 202);
+    }
+    assert.deepEqual(automationStarts, ["test", "real"]);
   });
 });
 
@@ -53,6 +89,9 @@ test("entrega vacío el contenido inicial del correo", async () => {
   await withServer(async ({ baseUrl }) => {
     const result = await fetch(`${baseUrl}/api/mail-settings`).then((response) => response.json());
     assert.equal(result.configured, false);
+    assert.equal(result.settings.sender, "");
+    assert.equal(result.settings.to, "");
+    assert.equal(result.settings.cc, "");
     assert.equal(result.settings.contentHtml, "");
   });
 });
@@ -77,7 +116,7 @@ test("guarda credenciales y ejecuta la comprobación inyectada", async () => {
     assert.deepEqual(await response.json(), {
       configured: true,
       verified: true,
-      message: "Credenciales guardadas. El inicio de sesión se comprobó correctamente.",
+      message: "Credenciales del PAM guardadas. El inicio de sesión se comprobó correctamente.",
     });
     const status = await fetch(`${baseUrl}/api/credentials/status`);
     assert.deepEqual(await status.json(), { configured: true });
@@ -113,7 +152,11 @@ test("la API conserva los campos vacíos durante una edición parcial", async ()
     const response = await fetch(`${baseUrl}/api/credentials`, {
       method: "POST",
       headers,
-      body: JSON.stringify({ username: "", password: "contraseña-nueva", totpSecret: "" }),
+      body: JSON.stringify({
+        username: "",
+        password: "contraseña-nueva",
+        totpSecret: "",
+      }),
     });
 
     assert.equal(response.status, 200);
@@ -165,7 +208,8 @@ test("guarda y devuelve la configuración persistente de solicitud", async () =>
   await withServer(async ({ baseUrl }) => {
     const settings = {
       startDate: "03/08",
-      startTime: "11:15",
+      startTime12: "02:15",
+      startPeriod: "PM",
       sessionHours: 8,
       reason: "Prueba de persistencia",
     };
@@ -181,18 +225,23 @@ test("guarda y devuelve la configuración persistente de solicitud", async () =>
     const saved = await response.json();
     assert.equal(saved.configured, true);
     assert.equal(saved.settings.reason, settings.reason);
+    assert.equal(saved.settings.startTime, "14:15");
+    assert.equal(saved.settings.startTime12, "02:15");
+    assert.equal(saved.settings.startPeriod, "PM");
 
     const loadedResponse = await fetch(`${baseUrl}/api/request-settings`);
     const loaded = await loadedResponse.json();
     assert.equal(loaded.configured, true);
     assert.equal(loaded.settings.startDate, settings.startDate);
     assert.equal(loaded.settings.sessionHours, settings.sessionHours);
+    assert.equal(loaded.settings.startTime, "14:15");
   });
 });
 
 test("guarda y devuelve destinatarios y contenido enriquecido del correo", async () => {
   await withServer(async ({ baseUrl }) => {
     const settings = {
+      sender: "remitente@example.com",
       to: "uno@example.com;dos@example.com",
       cc: "copia@example.com",
       subject: "Accesos PAM",
@@ -208,6 +257,7 @@ test("guarda y devuelve destinatarios y contenido enriquecido del correo", async
     const loaded = await fetch(`${baseUrl}/api/mail-settings`).then((result) => result.json());
     assert.equal(loaded.configured, true);
     assert.equal(loaded.settings.to, settings.to);
+    assert.equal(loaded.settings.sender, settings.sender);
     assert.deepEqual(loaded.settings.toRecipients, ["uno@example.com", "dos@example.com"]);
     assert.match(loaded.settings.contentHtml, /<table>/);
     assert.match(loaded.settings.contentHtml, /font-weight: bold/);
@@ -232,17 +282,20 @@ test("guarda y alterna la acción final de la automatización", async () => {
   });
 });
 
-test("devuelve los 14 ID para mostrarlos en la interfaz web", async () => {
+test("devuelve la cantidad dinámica de ID para mostrarlos en la interfaz web", async () => {
   await withServer(async ({ baseUrl, automationResultPath }) => {
-    const requestIds = Array.from({ length: 14 }, (_, index) => String(150001 + index));
+    const requestIds = Array.from({ length: 4 }, (_, index) => String(150001 + index));
     await writeFile(automationResultPath, JSON.stringify({
       completedAt: "2026-08-01T15:00:00.000Z",
+      favoriteCount: requestIds.length,
       requestIds,
+      pending: requestIds.map((id) => ({ id, status: "Pending" })),
       sendEmail: false,
     }), "utf8");
 
     const result = await fetch(`${baseUrl}/api/automation-result`).then((response) => response.json());
     assert.equal(result.available, true);
+    assert.equal(result.favoriteCount, 4);
     assert.deepEqual(result.requestIds, requestIds);
     assert.match(result.resultId, /150001/);
   });

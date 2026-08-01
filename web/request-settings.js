@@ -6,7 +6,8 @@ const saveLabel = "Guardar configuración";
 function applySettingsState(result) {
   const settings = result.settings;
   form.elements.startDate.value = settings.startDate ?? "";
-  form.elements.startTime.value = settings.startTime ?? "";
+  form.elements.startTime12.value = settings.startTime12 ?? "";
+  form.elements.startPeriod.value = settings.startPeriod ?? "AM";
   form.elements.sessionHours.value = settings.sessionHours ?? "";
   form.elements.reason.value = settings.reason ?? "";
   saveButton.querySelector("span:first-child").textContent = saveLabel;
@@ -42,7 +43,8 @@ form.addEventListener("submit", async (event) => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         startDate: form.elements.startDate.value,
-        startTime: form.elements.startTime.value,
+        startTime12: form.elements.startTime12.value,
+        startPeriod: form.elements.startPeriod.value,
         sessionHours: form.elements.sessionHours.value,
         reason: form.elements.reason.value,
       }),

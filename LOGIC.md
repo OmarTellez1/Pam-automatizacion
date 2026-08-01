@@ -5,12 +5,12 @@
 Este proyecto automatiza un flujo interno de BeyondInsight Password Safe alojado en `https://10.30.17.117`:
 
 1. Iniciar sesión con usuario, contraseña y TOTP.
-2. Abrir las 14 cuentas favoritas de Password Safe.
+2. Abrir `Accounts > Browse By Category > Favorites` y detectar dinámicamente todas las cuentas visibles.
 3. Preguntar la fecha `dd/mm`, la hora `HH:mm` y si se desea enviar el correo; validar las respuestas y crear una solicitud de acceso para cada cuenta.
 4. Consultar exclusivamente `Requests > Pending`.
-5. Extraer y guardar los 14 `Request ID` pendientes.
+5. Extraer y guardar un `Request ID` pendiente por cada cuenta encontrada en `Favorites`.
 
-El flujo dispone de una interfaz web local para configurar credenciales, solicitud, correo y resultado final. `INICIAR_INTERFAZ.cmd` abre la página en `127.0.0.1`; su botón de automatización permanece deshabilitado durante esta etapa. `INICIAR_PRUEBA.cmd` valida un formulario y lo descarta; `INICIAR_AUTOMATIZACION.cmd` incluye `-Execute` y crea las solicitudes reales. Los lanzadores solo preguntan fecha y hora. El resultado final se obtiene del toggle persistente: correo mediante Outlook clásico o un diálogo web con los IDs.
+El flujo dispone de una interfaz web local para configurar credenciales, solicitud, correo, resultado final e iniciar la ejecución. `BOTON_PRUEBA=TRUE` habilita un botón adicional que recorre y descarta todos los formularios sin enviar solicitudes. `INICIAR_AUTOMATIZACION.cmd` y el botón real incluyen `-Execute`, por lo que sí crean solicitudes. El resultado final se obtiene del toggle persistente: correo mediante Outlook clásico o un diálogo web con los IDs.
 
 Este documento no contiene credenciales, contraseñas, semillas TOTP ni códigos temporales. Un nuevo hilo de Codex debe preservar esa regla.
 
@@ -19,7 +19,7 @@ Este documento no contiene credenciales, contraseñas, semillas TOTP ni códigos
 - El inicio de sesión desatendido funciona.
 - El TOTP se genera localmente a partir de la semilla Base32 guardada en `.env`.
 - El TOTP usa RFC 6238 con HMAC-SHA1, seis dígitos, periodo de 30 segundos y `T0 = 0`. Los espacios, guiones y padding de la representación Base32 se normalizan. La pertenencia de una semilla al enrolamiento vigente solo puede confirmarse mediante la prueba real de login.
-- El formulario de solicitud y la extracción de IDs funcionan para 14 cuentas.
+- El formulario de solicitud y la extracción de IDs usan como cantidad esperada el número actual de cuentas en `Favorites`; no existe un límite fijo de 14.
 - El flujo fue validado de forma visible con Playwright/Chrome.
 - La prueba real del 1 de agosto de 2026 creó 14 solicitudes pendientes con IDs del `140131` al `140144`.
 - Una segunda ejecución reconoció las 14 solicitudes pendientes y no generó duplicados.
@@ -28,22 +28,22 @@ Este documento no contiene credenciales, contraseñas, semillas TOTP ni códigos
 - Una validación visible confirmó que `01/08` y `14:00` llegan al formulario como 1 de agosto del año vigente y `02:00 PM`, y que el modo de simulación descarta el formulario sin enviarlo.
 - Una regresión observada con `12/08` hacía que el selector conservara el día actual. Se corrigió vinculando el clic al calendario Flatpickr de `Start Date`, abriéndolo antes de cambiar de mes y verificando inmediatamente el valor seleccionado. Una prueba visible confirmó `12/08/2026` y `03:00 PM` sin enviar la solicitud.
 - Las pruebas unitarias actuales cubren validación y conversión de fechas y horas, normalización de aplicaciones y generación TOTP.
-- Después de obtener 14 ID únicos, el flujo genera un correo Markdown completo sin construir la tabla mediante control visual de Outlook.
-- La integración Graph está implementada, pero la autorización real queda pendiente hasta configurar una aplicación de Microsoft Entra de HITSS y realizar el inicio de sesión de una sola vez.
+- Después de obtener un ID único por cuenta favorita, el flujo genera el HTML definitivo usando exclusivamente el contenido guardado en la interfaz.
 - Los ID `140131` a `140144` pertenecen únicamente a la ejecución de prueba del 1 de agosto de 2026. No están incorporados como constantes del correo.
-- Outlook clásico 16.0 está instalado, el perfil `Outlook` contiene una única cuenta `tellezoe@hitss.com` y COM puede acceder a ella.
+- Outlook clásico se controla mediante COM. Cada instalación selecciona la cuenta iniciada cuyo `SmtpAddress` coincide con `PAM_MAIL_SENDER`.
 - La primera prueba COM creó y mostró un borrador guardado con los 14 ID; la verificación posterior confirmó `Sent = False` y cero ID ausentes.
 - Después de la confirmación explícita del usuario, ese mismo borrador se envió mediante COM el 31 de julio de 2026. La verificación encontró el mensaje en `Elementos enviados` con `Sent = True`, un destinatario y los 14 ID completos. `last-email.json` impide repetir accidentalmente el mismo conjunto.
 - El lanzador final `INICIAR_AUTOMATIZACION.cmd` está implementado y ejecuta el navegador de forma desatendida con `-Execute`.
-- `.env.mail` persiste destinatarios, copias, asunto y HTML enriquecido. Las listas usan `;` como separador y las imágenes pegadas se incorporan al mensaje como adjuntos inline CID.
+- `.env.mail` persiste remitente, destinatarios, copias, asunto y HTML enriquecido. Las listas usan `;` como separador y las imágenes pegadas se incorporan al mensaje como adjuntos inline CID.
 - Al iniciar la interfaz, `.env` y `.env.mail` se crean automáticamente si faltan. La creación usa exclusividad de archivo y nunca sobrescribe una configuración existente.
-- La interfaz web local permite guardar `BI_USERNAME`, `BI_PASSWORD` y `BI_TOTP_SECRET` en `.env` y prueba inmediatamente el inicio de sesión sin crear solicitudes.
+- La interfaz web local guarda únicamente `BI_USERNAME`, `BI_PASSWORD` y `BI_TOTP_SECRET` en `.env`; prueba inmediatamente el inicio de sesión PAM sin crear solicitudes. El remitente de Outlook pertenece a `.env.mail`.
 - La interfaz solo escucha en `127.0.0.1`, valida Host y Origin, bloquea scripts y conexiones externas mediante CSP, permite estilos inline necesarios para el editor enriquecido, no precarga secretos y bloquea comprobaciones simultáneas.
-- La portada conserva el encabezado y muestra cinco controles centrados: credenciales, solicitud, envío de correo, toggle de resultado e inicio de automatización. Solo el botón de credenciales cambia a `Editar credenciales`, basándose exclusivamente en las tres variables `BI_*`.
+- La portada conserva el encabezado y muestra controles centrados para credenciales, solicitud, envío de correo, resultado final y ejecución. `Iniciar prueba` solo aparece con `BOTON_PRUEBA=TRUE`; `Iniciar automatización` siempre corresponde al modo real y exige confirmación. Durante cualquier ejecución todos esos controles se bloquean; se restauran al recibir un estado `completed` o `failed`. Si la acción final envió correo, el estado completado abre un diálogo de confirmación una sola vez.
 - En modo edición, cada campo vacío conserva el valor ya guardado. La prueba de login clasifica los fallos según ocurran antes del desafío TOTP, durante el desafío o después de la confirmación.
-- La configuración de solicitud persiste fecha, hora, duración total y razón en `.env`; sus valores no secretos sí regresan al formulario para poder editarlos.
-- El editor de correo comienza vacío. Después del primer guardado vuelve a cargar únicamente el HTML configurado por el usuario, conserva formato seguro y sustituye los IDs y la razón con los datos de la ejecución actual.
-- La suite actual contiene 62 pruebas aprobadas.
+- La configuración de solicitud muestra hora `hh:mm` con un selector `AM/PM`, la convierte de forma validada y persiste `PAM_START_TIME` como `HH:mm` de 24 horas para el portal. Sus valores no secretos regresan al formulario para poder editarlos.
+- El remitente, `Para`, `CC` y el editor de correo comienzan vacíos. Después del primer guardado vuelven a cargar únicamente los valores configurados por el usuario; el HTML conserva formato seguro y sustituye los IDs y la razón con los datos de la ejecución actual.
+- La configuración de correo avisa que el envío requiere Outlook clásico instalado y una sesión iniciada; el nuevo Outlook no es compatible con COM.
+- La suite actual contiene 58 pruebas aprobadas.
 
 ## Parámetros de negocio
 
@@ -51,9 +51,9 @@ Los valores se encuentran en `src/request-config.mjs`:
 
 | Campo | Valor |
 | --- | --- |
-| Cantidad esperada | 14 cuentas |
+| Cantidad esperada | Número dinámico de filas de `Accounts > Browse By Category > Favorites` |
 | Start Date | `PAM_START_DATE`, entrada persistente `dd/mm`; el año vigente de Ecuador se añade automáticamente |
-| Start Time | `PAM_START_TIME`, entrada persistente `HH:mm` en formato de 24 horas |
+| Start Time | La web recibe `hh:mm` + `AM/PM`; `PAM_START_TIME` persiste `HH:mm` en formato de 24 horas para BeyondInsight |
 | Acción final | `PAM_FINAL_ACTION=email`: enviar por Outlook clásico; `web`: mostrar los IDs en la interfaz local |
 | Days | Siempre `0` |
 | Hours | `PAM_SESSION_HOURS`; entero permitido de 1 a 8 horas |
@@ -70,26 +70,20 @@ La zona horaria del contexto del navegador y del cálculo de la fecha es `Americ
 
 - `src/session.mjs`: crea el navegador, aplica las restricciones de red e inicia sesión.
 - `src/env-config.mjs`: interpreta, valida y guarda las credenciales de `.env` sin dependencias adicionales.
+- `src/email-address.mjs`: valida el remitente y los destinatarios del correo.
 - `src/configuration-bootstrap.mjs`: define los valores iniciales y coordina la creación no destructiva de `.env` y `.env.mail`.
 - `src/request-settings.mjs`: valida y persiste fecha, hora, duración y razón; limita la sesión a 1–8 horas.
 - `src/final-action.mjs`: valida y persiste la acción final segura en `.env`.
-- `src/automation-result.mjs`: valida el último resultado y expone exclusivamente 14 IDs cuando la acción final fue web.
+- `src/automation-result.mjs`: valida el último resultado y expone todos los IDs cuando la acción final fue web.
 - `src/mail-settings.mjs`: valida listas de destinatarios, sanitiza HTML y persiste la configuración en `.env.mail`.
 - `src/local-server.mjs`: sirve la interfaz en loopback, expone solo el estado de configuración y coordina el guardado con la prueba de login.
 - `web/`: HTML, CSS y JavaScript de la interfaz local; no contiene reglas de autenticación ni secretos.
 - `src/login.mjs`: ejecutable sencillo para comprobar solamente el inicio de sesión.
-- `src/request-access.mjs`: orquesta las 14 solicitudes, evita duplicados pendientes y extrae los IDs.
+- `src/request-access.mjs`: abre `Favorites`, orquesta una solicitud por cada fila, evita duplicados pendientes y extrae los IDs.
 - `src/request-config.mjs`: constantes y funciones puras de fechas, normalización y claves de solicitud.
 - `src/totp.mjs`: decodifica Base32 y genera códigos TOTP RFC 6238 con HMAC-SHA1.
-- `src/email-content.mjs`: valida los 14 ID, actualiza el HTML configurado y materializa imágenes inline.
-- `EMAIL_TEMPLATE.md`: cuerpo reutilizable del correo; contiene el marcador `{{REQUEST_IDS}}` y la tabla ya definida.
-- `EMAIL_TEMPLATE.html`: versión HTML usada por Microsoft Graph, incluyendo tabla y firma.
-- `src/outlook-email.mjs`: valida el resultado Pending, construye la solicitud Graph, detecta duplicados y ejecuta `POST /me/sendMail`.
-- `src/outlook-auth.mjs`: carga la configuración, crea el cliente MSAL y obtiene tokens silenciosamente o mediante Device Code.
-- `src/authorize-outlook.mjs`: inicia la autorización interactiva de una sola vez.
-- `src/send-access-email.mjs`: genera la vista previa y, solo con `--send`, envía el correo y registra la auditoría.
-- `src/prepare-access-email.mjs`: combina `last-run.json` con `.env.mail`, genera el HTML definitivo y prepara el manifiesto para Outlook clásico.
-- `mail-config.json`: conserva la cuenta remitente esperada de Outlook clásico. Los demás campos históricos ya no controlan el envío activo.
+- `src/email-content.mjs`: valida que exista un ID único y `Pending` por cada favorito, actualiza el HTML configurado y materializa imágenes inline.
+- `src/prepare-access-email.mjs`: combina `last-run.json` con toda la configuración de `.env.mail`, genera el HTML definitivo y prepara el manifiesto para Outlook clásico.
 
 ### Scripts de PowerShell
 
@@ -98,44 +92,39 @@ La zona horaria del contexto del navegador y del cálculo de la fecha es `Americ
 - `scripts/runtime.ps1`: localiza un `node.exe` compatible (versión 20 o posterior). Prioriza `BI_NODE_EXE`, luego el runtime incluido con Codex y finalmente las instalaciones encontradas en `PATH`.
 - `scripts/run-login.ps1`: descifra temporalmente los secretos para el proceso y ejecuta `src/login.mjs`.
 - `scripts/run-access-requests.ps1`: ejecuta `src/request-access.mjs`; acepta fecha, hora, modo visible y autorización para crear solicitudes. Tras una ejecución real, envía por Outlook clásico o abre los IDs según `PAM_FINAL_ACTION`. `-Email S|N` permanece como sobrescritura técnica opcional.
-- `scripts/setup-outlook.ps1`: guarda tenant, aplicación, remitente, destinatario y asunto; no almacena client secrets.
-- `scripts/run-outlook-auth.ps1`: ejecuta el Device Code flow y crea la caché de tokens protegida con DPAPI.
-- `scripts/run-email.ps1`: genera una vista previa por defecto; `-Send` autoriza el envío y `-Force` un reenvío deliberado.
-- `scripts/run-outlook-classic.ps1`: crea un borrador mediante COM por defecto; `-Display` lo muestra y `-Send` lo envía.
+- `scripts/run-outlook-classic.ps1`: crea un mensaje nuevo mediante COM; por defecto lo guarda como borrador, `-Display` lo muestra y `-Send` lo envía. Nunca reutiliza un borrador anterior. Antes de enviar valida el hash del HTML, la sustitución del marcador, la presencia de todos los IDs y la lista fija completa cuando `testMode` es verdadero.
 
 ### Lanzador de prueba
 
-- `INICIAR_PRUEBA.cmd`: lanzador de doble clic para la interfaz de terminal. Ejecuta `run-access-requests.ps1 -Headed` sin `-Execute`, por lo que arma, valida y descarta el primer formulario sin enviar solicitudes. Mantiene la ventana abierta al finalizar normalmente o con error para que el usuario lea el resultado; ante la cancelación con `Ctrl+C`, devuelve el código `130`.
+- `INICIAR_PRUEBA.cmd`: ejecuta `run-access-requests.ps1 -TestRun -Headed`, recorre todas las cuentas de `Favorites`, arma y descarta cada formulario sin presionar `Submit Request`, y después aplica el resultado final con IDs simulados.
 
 ### Lanzador de interfaz
 
-- `INICIAR_INTERFAZ.cmd`: crea los archivos de configuración que falten, inicia el servidor en `http://127.0.0.1:4317` y abre automáticamente el navegador predeterminado mediante Windows Explorer. Las rutas `/credenciales`, `/solicitud` y `/correo` gestionan sus respectivas configuraciones. El botón para iniciar la automatización está deshabilitado hasta la siguiente etapa.
+- `INICIAR_INTERFAZ.cmd`: crea los archivos de configuración que falten, inicia el servidor en `http://127.0.0.1:4317` y abre automáticamente el navegador predeterminado. Las rutas `/credenciales`, `/solicitud` y `/correo` gestionan sus respectivas configuraciones; `/api/automation/start` inicia un solo proceso de prueba o real y `/api/automation/status` expone su estado sin incluir secretos.
 
 ### Lanzador final
 
-- `INICIAR_AUTOMATIZACION.cmd`: lanzador de producción. Ejecuta `run-access-requests.ps1 -Execute` sin `-Headed`, crea o recupera exactamente 14 solicitudes `Pending` y aplica el toggle persistente. `email` invoca Outlook clásico con `-Send`; `web` deja los IDs disponibles para el diálogo de la portada. No debe ejecutarse como prueba.
+- `INICIAR_AUTOMATIZACION.cmd`: lanzador de producción. Ejecuta `run-access-requests.ps1 -Execute` sin `-Headed`, crea o recupera una solicitud `Pending` por cada cuenta actual de `Favorites` y aplica el toggle persistente. `email` invoca Outlook clásico con `-Send`; `web` deja los IDs disponibles para el diálogo de la portada. No debe ejecutarse como prueba.
 
 La resolución explícita del runtime es necesaria porque este equipo también tiene Node.js 14.21.3 en `C:\Program Files\nodejs`. Una terminal abierta fuera de Codex puede encontrar esa versión primero. Los scripts no deben invocar `node` directamente: deben usar `Resolve-ProjectNode` para seleccionar Node 20 o posterior y evitar incompatibilidades de sintaxis o de Playwright.
 
 ### Estado y resultados
 
-- `.env`: contiene las credenciales `BI_*` como texto legible y los parámetros no secretos `PAM_START_DATE`, `PAM_START_TIME`, `PAM_SESSION_HOURS`, `PAM_REQUEST_REASON` y `PAM_FINAL_ACTION`. Es local y está excluido de Git.
-- `.env.mail`: contiene destinatarios, copias, asunto y HTML enriquecido; al crearse, `PAM_MAIL_CONTENT_HTML` queda vacío hasta el primer guardado del usuario. Es local y está excluido de Git.
+- `.env`: contiene las tres credenciales `BI_*` y los parámetros no secretos `PAM_START_DATE`, `PAM_START_TIME`, `PAM_SESSION_HOURS`, `PAM_REQUEST_REASON` y `PAM_FINAL_ACTION`. Es local y está excluido de Git.
+- `.env.mail`: contiene `PAM_MAIL_SENDER`, destinatarios, copias, asunto y HTML enriquecido; al crearse, remitente, `PAM_MAIL_TO`, `PAM_MAIL_CC` y `PAM_MAIL_CONTENT_HTML` quedan vacíos hasta el primer guardado del usuario. Es local y está excluido de Git.
 - `.env.example`: documenta el formato con valores ficticios y sí puede versionarse.
-- `run-results/last-run.json`: resultado estructurado de la última ejecución real y fuente de `/api/automation-result`; el endpoint solo devuelve un resultado web con exactamente 14 IDs válidos.
-- `run-results/CORREO_ACCESOS_PAM.md`: cuerpo del correo generado con los 14 ID de la última ejecución correcta.
-- `run-results/CORREO_ACCESOS_PAM.html`: cuerpo HTML definitivo usado por Outlook clásico y disponible para la alternativa Graph.
+- `run-results/last-run.json`: resultado estructurado de la última ejecución real. Guarda `favoriteCount`, las solicitudes `pending` y sus `requestIds`; `/api/automation-result` solo los devuelve cuando las tres cantidades coinciden y los IDs son únicos.
+- `run-results/CORREO_ACCESOS_PAM.html`: cuerpo HTML definitivo usado por Outlook clásico.
 - `run-results/last-email.json`: auditoría local del último correo y protección contra duplicados.
 - `run-results/email-manifest.json`: manifiesto validado que comparte la configuración y los ID con Outlook clásico.
 - `run-results/last-draft.json`: identificador y datos del último borrador creado mediante COM.
-- `state/outlook-config.json`: identificadores públicos de Entra y configuración del correo.
-- `state/outlook-token-cache.bin`: caché MSAL cifrada para la cuenta actual de Windows.
 - `run-artifacts/`: capturas e informes de fallos.
+- `logs/`: salida persistente de cada ejecución. Los inicios desde localhost generan `automation-<modo>-<fecha>.log` con stdout y stderr completos; los lanzadores PowerShell generan también su registro de sesión. La carpeta está excluida de Git.
 - `test/`: pruebas unitarias ejecutadas por Node.
 
-`.env`, `.env.mail`, `state`, `run-results`, `run-artifacts` y `.playwright-cli` están excluidos mediante `.gitignore`.
+`.env`, `.env.mail`, `state`, `run-results`, `run-artifacts`, `logs` y `.playwright-cli` están excluidos mediante `.gitignore`. `state` se mantiene ignorado para no exponer posibles datos locales creados por versiones anteriores, aunque el flujo actual ya no lo utiliza.
 
-`startLocalInterface()` ejecuta primero `initializeLocalConfigurationFiles()`. La creación usa `writeFile(..., { flag: "wx" })`: solo tiene éxito cuando el archivo no existe. `EEXIST` se interpreta como configuración ya presente y el contenido se deja intacto. Cada archivo se evalúa por separado, por lo que puede crearse únicamente el que falte. La carga inicial del formulario no usa `EMAIL_TEMPLATE.html`; el contenido solo se muestra después de haber sido guardado en `.env.mail`.
+`startLocalInterface()` ejecuta primero `initializeLocalConfigurationFiles()`. La creación usa `writeFile(..., { flag: "wx" })`: solo tiene éxito cuando el archivo no existe. `EEXIST` se interpreta como configuración ya presente y el contenido se deja intacto. Cada archivo se evalúa por separado, por lo que puede crearse únicamente el que falte. No existen plantillas predeterminadas: los destinatarios y el contenido solo se muestran después de haber sido guardados en `.env.mail`.
 
 ## Flujo de autenticación
 
@@ -156,35 +145,39 @@ No se persisten cookies ni perfiles de navegador. Cada ejecución crea una sesi�
 
 `src/request-access.mjs` sigue este orden:
 
-1. Interpreta los argumentos y carga la configuración persistente de solicitud y resultado final. Los argumentos explícitos de fecha y hora tienen prioridad; si aún falta alguno, lo solicita en la terminal. Sin `--execute`, trabaja en modo de simulación.
+1. Interpreta los argumentos y carga la configuración persistente de solicitud y resultado final. `--execute` selecciona producción; `--test-run` selecciona la prueba completa; ambos son mutuamente excluyentes. Sin ninguno se conserva la vista previa técnica de un solo formulario. Antes de una ejecución real o de prueba con correo, valida toda la configuración de `.env.mail`.
 2. Elimina espacios al inicio y al final de cada respuesta. Una respuesta vacía o inválida genera un mensaje y repite la misma pregunta indefinidamente.
 3. Valida que la fecha use exactamente `dd/mm` y le añade el año actual calculado en `America/Guayaquil`.
 4. Valida que la hora use `HH:mm` de 24 horas y muestra su equivalencia de 12 horas. Por ejemplo, `14:00` se confirma como `02:00 PM`.
 5. Convierte `PAM_FINAL_ACTION` a `sendEmail`; ante ausencia usa `web` como valor seguro. El valor histórico `notepad` se migra a `web` al cargarlo.
 6. Permite cancelar voluntariamente con `Ctrl+C`, cierra el navegador si ya existe y devuelve el código de salida `130`.
 7. Inicia una sesión autenticada.
-8. Abre `Accounts` y espera exactamente `14 items`.
+8. Abre `Accounts`, localiza el encabezado real `Browse by Category`, selecciona `Favorites`, espera la primera fila y cuenta dinámicamente los `tr[aria-label^="Row "]`. El texto decorativo `N items` no se usa porque la grilla no lo expone como texto localizable.
 9. Lee las filas y construye para cada cuenta una identidad formada por sistema, cuenta y familia de aplicación.
 10. Abre `Requests`, selecciona exclusivamente `Pending` y lee las solicitudes actuales.
 11. Filtra las pendientes por fecha/hora exactas y por el motivo configurado.
 12. Construye un mapa de solicitudes pendientes equivalentes para evitar recrearlas.
-13. Regresa a `Accounts` y procesa las 14 filas en su orden visible.
+13. Regresa a `Accounts > Browse By Category > Favorites`, comprueba que el número no haya cambiado y procesa todas las filas en su orden visible.
 14. Antes de abrir cada fila, vuelve a comprobar su identidad para evitar actuar sobre una tabla que cambió.
-15. Para las solicitudes no existentes, pulsa `Access`, abre la pestaña `Submit Request`, completa fecha, hora, días, horas y razón desde la configuración efectiva, y valida todos los valores antes de enviar.
-16. Al terminar, vuelve a `Requests > Pending`, obtiene los IDs coincidentes y exige exactamente 14 IDs únicos.
-17. Guarda el resultado y la decisión de correo en `run-results/last-run.json`, y escribe una línea `REQUEST_IDS=id1,id2,...` en la consola.
-18. Si existen exactamente 14 ID únicos, sustituye `{{REQUEST_IDS}}` en `EMAIL_TEMPLATE.md` y guarda el correo listo en `run-results/CORREO_ACCESOS_PAM.md`.
-19. Genera también el cuerpo HTML. Para correo, vuelve a validar que `requestIds` coincida con 14 solicitudes cuyo estado sea exactamente `Pending`.
-20. Si la acción final es `email`, `prepare-access-email.mjs` lee destinatarios, copias, asunto y HTML desde `.env.mail`, reemplaza IDs y razón, convierte imágenes `data:` a adjuntos CID y crea `email-manifest.json`; Outlook clásico verifica la cuenta remitente esperada, evita duplicados y llama a `MailItem.Send()`.
-21. Si la acción final es `web`, PowerShell no abre aplicaciones ni crea un archivo adicional. La portada consulta `/api/automation-result`, muestra los 14 IDs en un diálogo y permite copiarlos.
-22. La ruta Graph sigue disponible como alternativa: obtiene un token MSAL y llama a `POST https://graph.microsoft.com/v1.0/me/sendMail`.
+15. Para las solicitudes no existentes, pulsa `Access`, abre la pestaña `Submit Request`, completa fecha, hora visible `hh:mm AM/PM`, días, horas y razón desde la configuración efectiva, y valida todos los valores antes de enviar.
+16. Al terminar, vuelve a `Requests > Pending`, limita los resultados a las identidades de `Favorites` y exige un ID único por cada cuenta.
+17. Guarda `favoriteCount`, el resultado y la decisión de correo en `run-results/last-run.json`, y escribe una línea `REQUEST_IDS=id1,id2,...` en la consola.
+18. Si la acción final es `email`, vuelve a validar que `requestIds` coincida con `favoriteCount` solicitudes cuyo estado sea exactamente `Pending`.
+19. `prepare-access-email.mjs` lee remitente, destinatarios, copias, asunto y HTML desde `.env.mail`; reemplaza IDs y razón, convierte imágenes `data:` a adjuntos CID y crea `email-manifest.json`. Outlook clásico exige una sola cuenta iniciada que coincida con el remitente, evita duplicados y llama a `MailItem.Send()`.
+20. Si la acción final es `web`, PowerShell no abre aplicaciones ni crea un archivo adicional. La portada consulta `/api/automation-result`, muestra la cantidad dinámica y todos los IDs en un diálogo y permite copiarlos.
 
-## Simulación y ejecución real
+## Prueba, vista previa y ejecución real
 
-Sin `-Execute`, el script llena únicamente el primer formulario, comprueba sus valores, pulsa `Cancel` y confirma `Discard Changes`. No crea solicitudes:
+Sin `-Execute` ni `-TestRun`, el script llena únicamente el primer formulario, comprueba sus valores, pulsa `Cancel` y confirma `Discard Changes`. No publica resultados:
 
 ```powershell
 .\scripts\run-access-requests.ps1 -Headed
+```
+
+Con `-TestRun`, repite ese llenado y descarte para todas las cuentas de `Favorites`. Guarda `testMode: true`, `submitted: 0`, el número de formularios validados y la lista fija de IDs simulados. El correo o diálogo web se ejecutan según `PAM_FINAL_ACTION`:
+
+```powershell
+.\scripts\run-access-requests.ps1 -TestRun -Headed
 ```
 
 Con `-Execute`, puede crear solicitudes reales:
@@ -201,7 +194,7 @@ Para evitar las preguntas y pasar los valores directamente:
 .\scripts\run-access-requests.ps1 -Date '01/08' -StartTime '14:00' -Headed
 ```
 
-La bandera `-Headed` muestra Chrome y debe usarse para validar cambios en la interfaz. Sin ella, Chrome se ejecuta de forma desatendida. `-Execute` continúa siendo la única bandera que autoriza envíos reales.
+La bandera `-Headed` muestra Chrome y debe usarse para validar cambios en el portal. Sin ella, Chrome se ejecuta de forma desatendida. `-Execute` continúa siendo la única bandera que autoriza presionar `Submit Request`; `-TestRun` puede enviar un correo de prueba, pero nunca crea solicitudes PAM.
 
 Las preguntas interactivas terminan en dos puntos y un espacio para que la entrada quede visualmente separada:
 
@@ -219,7 +212,7 @@ Las preguntas interactivas terminan en dos puntos y un espacio para que la entra
 - Las respuestas compuestas únicamente por espacios se consideran vacías. Los espacios exteriores de valores válidos se eliminan antes de validarlos.
 - La interfaz permanece en la pregunta actual hasta recibir una respuesta válida; `Ctrl+C` es la salida voluntaria prevista.
 - El toggle acepta únicamente `email` o `web`; el endpoint rechaza cualquier otro valor.
-- `14:00` se escribe como `14:00` en el control HTML de hora y BeyondInsight lo representa como `02:00 PM` en formato de 12 horas.
+- `14:00` se conserva y se asigna como `14:00` al `input[type="time"]` de BeyondInsight. Chrome representa ese mismo valor visualmente como `02:00 PM`; intentar llenar el DOM con el texto `02:00 PM` produce `Malformed value`.
 - `00:00` equivale a `12:00 AM`, `01:00` a `01:00 AM` y `12:00` a `12:00 PM`.
 - Los valores también pueden pasarse sin interacción como `--date dd/mm --time HH:mm --email S|N` desde Node o con `-Date`, `-StartTime` y `-Email` desde PowerShell.
 
@@ -262,7 +255,7 @@ Los selectores están basados en roles, etiquetas y atributos de la interfaz. Si
 
 ## Gestión y rotación de credenciales
 
-Para cambiar el usuario, la contraseña o la semilla alfanumérica TOTP, abra `INICIAR_INTERFAZ.cmd`, seleccione `Configurar credenciales` y guarde los tres datos. La semilla TOTP es la clave Base32 de enrolamiento, no un código temporal de seis dígitos.
+Para cambiar el usuario, la contraseña o la semilla alfanumérica TOTP, abra `INICIAR_INTERFAZ.cmd`, seleccione `Configurar credenciales del PAM` y guarde los tres datos. La semilla TOTP es la clave Base32 de enrolamiento, no un código temporal de seis dígitos.
 
 El servidor conserva cualquier otra variable ya existente en `.env`, actualiza las credenciales proporcionadas y mantiene las anteriores para los campos vacíos. Después prueba el login en una sesión de navegador aislada. Si la prueba falla, los datos permanecen guardados para que el estado sea explícito, pero la interfaz informa que no fueron verificados. Un fallo antes de mostrar `Enter Response` se presenta como problema de usuario o contraseña; un fallo posterior se presenta como problema de la clave o código del Authenticator; los fallos anteriores al formulario se presentan como conexión o portal.
 
@@ -306,7 +299,7 @@ Después de cualquier cambio de selectores o lógica del formulario:
 1. Ejecutar primero el modo visible sin `-Execute`.
 2. Confirmar que aparece el diálogo de descarte y no se crea ninguna solicitud.
 3. Solo entonces ejecutar una prueba real expresamente autorizada.
-4. Comprobar que el resultado contiene 14 IDs únicos en `Pending`.
+4. Comprobar que el resultado contiene `favoriteCount` IDs únicos en `Pending`.
 
 ## Continuidad recomendada para otro hilo de Codex
 
@@ -318,6 +311,6 @@ Antes de continuar:
 4. Mantener la consulta limitada exclusivamente a `Pending`.
 5. Usar Playwright y una prueba visible para cualquier cambio relacionado con la web.
 6. No ejecutar `-Execute` sin que el usuario haya autorizado claramente crear solicitudes reales.
-7. Preservar la detección de duplicados y el límite exacto de 14 cuentas.
+7. Preservar la detección de duplicados y el conteo dinámico tomado exclusivamente de `Favorites`.
 
 La siguiente fase prevista es validar una ejecución real iniciada manualmente con `INICIAR_AUTOMATIZACION.cmd`. Después podrá configurarse la ejecución de lunes a viernes a las 09:00, hora de Ecuador.

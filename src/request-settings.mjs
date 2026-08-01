@@ -7,7 +7,9 @@ import {
 import {
   DEFAULT_HOURS,
   DEFAULT_REASON,
+  parseTime12Hour,
   parseDayMonthForEcuador,
+  splitTime24Hour,
   validateStartTime,
 } from "./request-config.mjs";
 
@@ -15,7 +17,10 @@ const MAX_SESSION_HOURS = 8;
 
 export function validateRequestSettings(input) {
   const startDate = String(input?.startDate ?? "").trim();
-  const startTime = validateStartTime(input?.startTime);
+  const usesTwelveHourInput = input?.startTime12 !== undefined || input?.startPeriod !== undefined;
+  const startTime = usesTwelveHourInput
+    ? parseTime12Hour(input?.startTime12, input?.startPeriod)
+    : validateStartTime(input?.startTime);
   const rawSessionHours = String(input?.sessionHours ?? "").trim();
   const reason = String(input?.reason ?? "").trim();
 
@@ -41,6 +46,13 @@ export function validateRequestSettings(input) {
   };
 }
 
+function settingsForForm(settings) {
+  return {
+    ...settings,
+    ...splitTime24Hour(settings.startTime),
+  };
+}
+
 export async function loadRequestSettings(options = {}) {
   const values = await readProjectEnvironment(options.envPath);
   const environment = options.includeProcessEnvironment === false ? {} : process.env;
@@ -58,13 +70,15 @@ export async function getRequestSettingsState(options = {}) {
       envPath: options.envPath,
       includeProcessEnvironment: false,
     });
-    return { configured: true, settings };
+    return { configured: true, settings: settingsForForm(settings) };
   } catch {
     return {
       configured: false,
       settings: {
         startDate: "",
         startTime: "",
+        startTime12: "",
+        startPeriod: "AM",
         sessionHours: DEFAULT_HOURS,
         durationDays: 0,
         durationHours: DEFAULT_HOURS,
@@ -83,5 +97,5 @@ export async function writeRequestSettings(input, options = {}) {
     PAM_SESSION_HOURS: String(settings.sessionHours),
     PAM_REQUEST_REASON: settings.reason,
   }, { envPath });
-  return settings;
+  return settingsForForm(settings);
 }

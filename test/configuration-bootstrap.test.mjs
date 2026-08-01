@@ -22,9 +22,12 @@ test("crea automáticamente .env y .env.mail con todas las variables iniciales",
   assert.equal(values.BI_TOTP_SECRET, "");
   assert.equal(values.PAM_SESSION_HOURS, "8");
   assert.equal(values.PAM_FINAL_ACTION, "web");
+  assert.equal(values.BOTON_PRUEBA, "FALSE");
   const mail = await getMailSettingsState({ envPath: mailEnvPath });
   assert.equal(mail.configured, false);
-  assert.ok(mail.settings.to.length > 0);
+  assert.equal(mail.settings.sender, "");
+  assert.equal(mail.settings.to, "");
+  assert.equal(mail.settings.cc, "");
   assert.equal(mail.settings.contentHtml, "");
 });
 

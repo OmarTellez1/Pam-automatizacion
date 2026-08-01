@@ -21,11 +21,22 @@ test("reconoce varios destinatarios separados por punto y coma", () => {
 
 test("rechaza direcciones repetidas entre Para y CC", () => {
   assert.throws(() => validateMailSettings({
+    sender: "remitente@example.com",
     to: "uno@example.com",
     cc: "UNO@example.com",
     subject: "Prueba",
     contentHtml: "<p>Contenido</p>",
   }), /no puede repetirse en CC/);
+});
+
+test("exige que el remitente sea un correo de Outlook válido", () => {
+  assert.throws(() => validateMailSettings({
+    sender: "correo-invalido",
+    to: "uno@example.com",
+    cc: "",
+    subject: "Prueba",
+    contentHtml: "<p>{{REQUEST_IDS}}</p>",
+  }), /Tu correo de Outlook.*válida/);
 });
 
 test("conserva formato, tablas e imágenes seguras y elimina contenido activo", () => {
@@ -51,6 +62,7 @@ test("guarda y vuelve a cargar toda la configuración de correo", async () => {
   const directory = await mkdtemp(path.join(tmpdir(), "pam-mail-settings-"));
   const envPath = path.join(directory, ".env.mail");
   const input = {
+    sender: "remitente@example.com",
     to: "uno@example.com;dos@example.com",
     cc: "copia@example.com",
     subject: "Accesos PAM",
@@ -60,13 +72,19 @@ test("guarda y vuelve a cargar toda la configuración de correo", async () => {
   await writeMailSettings(input, { envPath });
   const loaded = await loadMailSettings({ envPath });
   assert.equal(loaded.to, input.to);
+  assert.equal(loaded.sender, input.sender);
   assert.equal(loaded.cc, input.cc);
   assert.equal(loaded.subject, input.subject);
   assert.match(loaded.contentHtml, /<table>/);
 });
 
 test("rechaza contenido sin marcador o con el marcador repetido", () => {
-  const base = { to: "uno@example.com", cc: "", subject: "Prueba" };
+  const base = {
+    sender: "remitente@example.com",
+    to: "uno@example.com",
+    cc: "",
+    subject: "Prueba",
+  };
   assert.throws(
     () => validateMailSettings({ ...base, contentHtml: "<p>Sin marcador</p>" }),
     /exactamente una vez.*REQUEST_IDS/,
@@ -85,6 +103,7 @@ test("recupera una configuración anterior sustituyendo los ID escritos por el m
   const directory = await mkdtemp(path.join(tmpdir(), "pam-mail-migration-"));
   const envPath = path.join(directory, ".env.mail");
   await updateProjectEnvironment({
+    PAM_MAIL_SENDER: "remitente@example.com",
     PAM_MAIL_TO: "uno@example.com",
     PAM_MAIL_CC: "",
     PAM_MAIL_SUBJECT: "Accesos PAM",

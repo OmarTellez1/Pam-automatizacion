@@ -3,9 +3,9 @@ setlocal
 cd /d "%~dp0"
 
 title Automatizacion real de solicitudes BeyondInsight
-echo ATENCION: este flujo creara las 14 solicitudes reales.
-echo Si responde S, enviara el correo mediante Outlook clasico.
-echo Si responde N, abrira los Request ID en el Bloc de notas.
+echo ATENCION: este flujo creara las solicitudes reales para las cuentas de Favorites.
+echo La accion final se tomara del toggle guardado en la interfaz local.
+echo Puede enviar por Outlook clasico o mostrar los Request ID en la web.
 echo Presione Ctrl+C para cancelar la automatizacion.
 echo.
 

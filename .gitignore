@@ -10,6 +10,7 @@ state/
 # Resultados y diagnósticos
 run-artifacts/
 run-results/
+logs/
 .playwright-cli/
 coverage/
 *.log

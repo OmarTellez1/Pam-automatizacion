@@ -22,6 +22,7 @@ export async function initializeLocalConfigurationFiles(options = {}) {
       PAM_SESSION_HOURS: String(DEFAULT_HOURS),
       PAM_REQUEST_REASON: DEFAULT_REASON,
       PAM_FINAL_ACTION: DEFAULT_FINAL_ACTION,
+      BOTON_PRUEBA: "FALSE",
     }, { envPath }),
     ensureMailSettingsFile({ envPath: mailEnvPath }),
   ]);

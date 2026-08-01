@@ -1,35 +1,68 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  extractValidatedRequestIds,
   materializeInlineImages,
   migrateLegacyRequestIdsPlaceholder,
   normalizeRequestIds,
   renderAccessEmailHtml,
-  renderAccessEmailMarkdown,
 } from "../src/email-content.mjs";
 import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { SIMULATED_REQUEST_IDS } from "../src/simulation.mjs";
 
-const ids = Array.from({ length: 14 }, (_, index) => String(140131 + index));
-
-test("genera un ID por línea dentro de la celda de la tabla", () => {
-  const result = renderAccessEmailMarkdown("Antes {{REQUEST_IDS}} Después", ids);
-
-  assert.equal(result, `Antes ${ids.join("<br>\n")} Después`);
-});
+const ids = Array.from({ length: 5 }, (_, index) => String(140131 + index));
 
 test("elimina espacios exteriores de los ID", () => {
   assert.deepEqual(normalizeRequestIds(ids.map((id) => ` ${id} `)), ids);
 });
 
-test("rechaza una cantidad distinta de 14 ID", () => {
-  assert.throws(() => normalizeRequestIds(ids.slice(0, 13)), /exactamente 14/);
+test("acepta una cantidad dinámica y la contrasta con Favorites", () => {
+  assert.deepEqual(normalizeRequestIds(ids), ids);
+  assert.throws(() => normalizeRequestIds(ids.slice(0, 4), 5), /5 Request ID/);
+  assert.throws(() => normalizeRequestIds([], 1), /al menos un Request ID/);
 });
 
 test("rechaza ID duplicados o no numéricos", () => {
-  assert.throws(() => normalizeRequestIds([...ids.slice(0, 13), ids[0]]), /únicos/);
-  assert.throws(() => normalizeRequestIds([...ids.slice(0, 13), "ABC"]), /dígitos/);
+  assert.throws(() => normalizeRequestIds([...ids.slice(0, 4), ids[0]]), /únicos/);
+  assert.throws(() => normalizeRequestIds([...ids.slice(0, 4), "ABC"]), /dígitos/);
+});
+
+test("usa todos los ID Pending de la cantidad actual de Favorites", () => {
+  const pending = ids.map((id) => ({ id, status: "Pending" }));
+  assert.deepEqual(extractValidatedRequestIds({ favoriteCount: 5, requestIds: ids, pending }), ids);
+  assert.throws(
+    () => extractValidatedRequestIds({
+      favoriteCount: 5,
+      requestIds: ids,
+      pending: pending.map((item, index) => index ? item : { ...item, status: "Approved" }),
+    }),
+    /estado Pending/,
+  );
+  assert.throws(
+    () => extractValidatedRequestIds({ favoriteCount: 6, requestIds: ids, pending }),
+    /6 Request ID/,
+  );
+});
+
+test("acepta IDs simulados solo en un resultado de prueba completo", () => {
+  const result = {
+    testMode: true,
+    favoriteCount: 6,
+    validatedFavoriteCount: 6,
+    submitted: 0,
+    requestIds: [...SIMULATED_REQUEST_IDS],
+  };
+  assert.deepEqual(extractValidatedRequestIds(result), SIMULATED_REQUEST_IDS);
+  assert.throws(
+    () => extractValidatedRequestIds({ ...result, submitted: 1 }),
+    /no confirma todos los formularios/,
+  );
+  assert.throws(
+    () => extractValidatedRequestIds({ ...result, requestIds: SIMULATED_REQUEST_IDS.slice(1) }),
+    /lista autorizada/,
+  );
 });
 
 test("actualiza los ID y el motivo en una tabla pegada", () => {

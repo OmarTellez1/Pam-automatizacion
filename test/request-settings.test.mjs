@@ -17,7 +17,8 @@ import {
 test("valida fecha, hora, duración total y razón de la solicitud", () => {
   assert.deepEqual(validateRequestSettings({
     startDate: "01/08",
-    startTime: "14:00",
+    startTime12: "02:00",
+    startPeriod: "PM",
     sessionHours: "8",
     reason: "Soporte programado",
   }), {
@@ -62,7 +63,11 @@ test("guarda y recupera la configuración sin modificar credenciales existentes"
   assert.deepEqual(await loadRequestSettings({ envPath }), expected);
   assert.deepEqual(await getRequestSettingsState({ envPath }), {
     configured: true,
-    settings: expected,
+    settings: {
+      ...expected,
+      startTime12: "09:30",
+      startPeriod: "AM",
+    },
   });
   const values = await readProjectEnvironment(envPath);
   assert.equal(values.PAM_REQUEST_REASON, expected.reason);

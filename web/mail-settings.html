@@ -22,8 +22,21 @@
 
       <section class="mail-content" aria-labelledby="page-title">
         <h1 id="page-title" class="visually-hidden">Configurar envío de correo</h1>
+        <div class="outlook-notice" role="note">
+          Para que el envío automático funcione, debes tener Outlook clásico (la versión antigua)
+          instalado y tu cuenta iniciada. El nuevo Outlook no es compatible con este envío.
+        </div>
         <section class="form-card mail-card" aria-label="Formulario de configuración de correo">
           <form id="mail-settings-form">
+            <div class="field">
+              <label for="mailSender">Tu correo de Outlook</label>
+              <input id="mailSender" name="sender" type="email" maxlength="320" required
+                autocomplete="email" placeholder="tu.correo@empresa.com">
+              <p class="field-help">
+                Debe coincidir con la cuenta que tienes iniciada en Outlook clásico.
+              </p>
+            </div>
+
             <div class="field">
               <label for="mailTo">Para</label>
               <input id="mailTo" name="to" type="text" required
@@ -54,7 +67,7 @@
                 aria-multiline="true" aria-label="Contenido del correo" spellcheck="true"></div>
               <p class="field-help">
                 Incluya {{REQUEST_IDS}} exactamente una vez. Al finalizar, se reemplazará por los
-                14 ID obtenidos. Puede pegar texto, tablas e imágenes.
+                ID obtenidos de las cuentas favoritas. Puede pegar texto, tablas e imágenes.
               </p>
             </div>
 

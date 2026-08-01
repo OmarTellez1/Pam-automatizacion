@@ -2,29 +2,27 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { generateAccessEmailArtifacts } from "./email-content.mjs";
-import { materializeInlineImages } from "./email-content.mjs";
-import { loadMailSettings } from "./mail-settings.mjs";
 import {
   extractValidatedRequestIds,
-  validateEmailAddress,
-} from "./outlook-email.mjs";
+  generateAccessEmailArtifacts,
+  materializeInlineImages,
+} from "./email-content.mjs";
+import { loadMailSettings } from "./mail-settings.mjs";
+import { formatAutomationEmailSubject } from "./simulation.mjs";
 
 const projectDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const resultsDirectory = path.join(projectDirectory, "run-results");
 const resultPath = path.join(resultsDirectory, "last-run.json");
-const configPath = path.join(projectDirectory, "mail-config.json");
 const manifestPath = path.join(resultsDirectory, "email-manifest.json");
 
 export async function prepareAccessEmail() {
-  const [result, config, mailSettings] = await Promise.all([
+  const [result, mailSettings] = await Promise.all([
     readFile(resultPath, "utf8").then(JSON.parse),
-    readFile(configPath, "utf8").then(JSON.parse),
     loadMailSettings(),
   ]);
   const requestIds = extractValidatedRequestIds(result);
-  const sender = validateEmailAddress(config.sender, "sender");
-  const { toRecipients, ccRecipients, subject, contentHtml } = mailSettings;
+  const { sender, toRecipients, ccRecipients, subject, contentHtml } = mailSettings;
+  const effectiveSubject = formatAutomationEmailSubject(subject, result.testMode);
 
   const artifacts = await generateAccessEmailArtifacts(requestIds, {
     htmlTemplate: contentHtml,
@@ -40,9 +38,11 @@ export async function prepareAccessEmail() {
     recipient: toRecipients[0],
     toRecipients,
     ccRecipients,
-    subject,
+    subject: effectiveSubject,
     requestDate: result.date,
     startTime: result.startTime,
+    favoriteCount: result.favoriteCount ?? result.pending.length,
+    testMode: result.testMode === true,
     requestIds,
     inlineImages: converted.inlineImages,
     contentHash,

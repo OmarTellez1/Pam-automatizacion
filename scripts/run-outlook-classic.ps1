@@ -17,6 +17,10 @@ $node = Resolve-ProjectNode
 & $node (Join-Path $projectDirectory 'src\prepare-access-email.mjs')
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 $manifest = Get-Content -Raw -LiteralPath $manifestPath | ConvertFrom-Json
+if ([bool]$manifest.testMode) {
+    $lastEmailPath = Join-Path $resultsDirectory 'last-test-email.json'
+    $lastDraftPath = Join-Path $resultsDirectory 'last-test-draft.json'
+}
 
 function Test-SameRequestIds {
     param($Left, $Right)
@@ -33,6 +37,45 @@ function Test-SameEmailAddresses {
     return (($leftValues -join ';') -eq ($rightValues -join ';'))
 }
 
+function Test-OrderedRequestIds {
+    param($Left, $Right)
+    if ($null -eq $Left -or $null -eq $Right) { return $false }
+    $leftValues = @($Left | ForEach-Object { [string]$_ })
+    $rightValues = @($Right | ForEach-Object { [string]$_ })
+    return (($leftValues -join ',') -ceq ($rightValues -join ','))
+}
+
+$htmlBody = Get-Content -Raw -LiteralPath ([string]$manifest.htmlPath)
+$utf8 = New-Object System.Text.UTF8Encoding($false)
+$sha256 = [Security.Cryptography.SHA256]::Create()
+try {
+    $calculatedContentHash = [BitConverter]::ToString(
+        $sha256.ComputeHash($utf8.GetBytes($htmlBody))
+    ).Replace('-', '').ToLowerInvariant()
+} finally {
+    $sha256.Dispose()
+}
+if ($calculatedContentHash -cne [string]$manifest.contentHash) {
+    throw 'El cuerpo del correo cambió después de validarse. No se enviará.'
+}
+if ($htmlBody.Contains('{{REQUEST_IDS}}')) {
+    throw 'El marcador REQUEST_IDS no fue reemplazado. No se enviará.'
+}
+foreach ($requestId in @($manifest.requestIds)) {
+    if (-not $htmlBody.Contains([string]$requestId)) {
+        throw "El cuerpo del correo no contiene el Request ID validado $requestId. No se enviará."
+    }
+}
+if ([bool]$manifest.testMode) {
+    $expectedTestIds = @(
+        '137288', '137287', '137286', '137284', '137283', '137282', '137281',
+        '137280', '137278', '137276', '137275', '137274', '137273', '137271'
+    )
+    if (-not (Test-OrderedRequestIds $manifest.requestIds $expectedTestIds)) {
+        throw 'El correo de prueba no contiene la lista fija autorizada de Request ID. No se enviará.'
+    }
+}
+
 if ($Send -and -not $Force -and (Test-Path -LiteralPath $lastEmailPath)) {
     $lastEmail = Get-Content -Raw -LiteralPath $lastEmailPath | ConvertFrom-Json
     $lastEmailRecipients = if ($lastEmail.toRecipients) { @($lastEmail.toRecipients) } elseif ($lastEmail.recipient) { @($lastEmail.recipient) } else { @() }
@@ -42,7 +85,7 @@ if ($Send -and -not $Force -and (Test-Path -LiteralPath $lastEmailPath)) {
     $hasRecordedContentHash = $lastEmail.PSObject.Properties.Name -contains 'contentHash'
     $sameContent = (-not $hasRecordedContentHash) -or ([string]$lastEmail.contentHash -eq [string]$manifest.contentHash)
     if ($sameRecipients -and $sameCc -and $sameSubject -and $sameContent -and (Test-SameRequestIds $lastEmail.requestIds $manifest.requestIds)) {
-        throw 'Este mismo conjunto de 14 ID ya fue enviado. Use -Force solo si el reenvío es intencional.'
+        throw 'Este mismo conjunto de Request ID ya fue enviado. Use -Force solo si el reenvío es intencional.'
     }
 }
 
@@ -61,52 +104,30 @@ try {
     }
     $account = $matchingAccounts[0]
 
+    # Cada ejecución crea un mensaje nuevo. Así un borrador anterior nunca puede
+    # conservar un cuerpo con Request ID obsoletos.
     $reusedDraft = $false
-    if ($Send -and (Test-Path -LiteralPath $lastDraftPath)) {
-        $lastDraft = Get-Content -Raw -LiteralPath $lastDraftPath | ConvertFrom-Json
-        $sameDraftRecipients = Test-SameEmailAddresses $lastDraft.toRecipients $manifest.toRecipients
-        $sameDraftCc = Test-SameEmailAddresses $lastDraft.ccRecipients $manifest.ccRecipients
-        $sameDraftSubject = ([string]$lastDraft.subject -eq [string]$manifest.subject)
-        $hasDraftContentHash = $lastDraft.PSObject.Properties.Name -contains 'contentHash'
-        $sameDraftContent = $hasDraftContentHash -and ([string]$lastDraft.contentHash -eq [string]$manifest.contentHash)
-        if ($sameDraftRecipients -and $sameDraftCc -and $sameDraftSubject -and $sameDraftContent -and (Test-SameRequestIds $lastDraft.requestIds $manifest.requestIds)) {
-            try {
-                $mail = $namespace.GetItemFromID([string]$lastDraft.entryId)
-                if ($mail.Sent) {
-                    [void][Runtime.InteropServices.Marshal]::ReleaseComObject($mail)
-                    $mail = $null
-                } else {
-                    $reusedDraft = $true
-                }
-            } catch {
-                $mail = $null
-            }
-        }
-    }
-
-    if (-not $mail) { $mail = $outlook.CreateItem(0) }
+    $mail = $outlook.CreateItem(0)
     $mail.SendUsingAccount = $account
     $mail.To = (@($manifest.toRecipients) -join ';')
     $mail.CC = (@($manifest.ccRecipients) -join ';')
     $mail.Subject = [string]$manifest.subject
-    if (-not $reusedDraft) {
-        foreach ($inlineImage in @($manifest.inlineImages)) {
-            $attachment = $null
-            $propertyAccessor = $null
-            try {
-                $attachment = $mail.Attachments.Add([string]$inlineImage.path)
-                $propertyAccessor = $attachment.PropertyAccessor
-                $propertyAccessor.SetProperty('http://schemas.microsoft.com/mapi/proptag/0x3712001F', [string]$inlineImage.contentId)
-                $propertyAccessor.SetProperty('http://schemas.microsoft.com/mapi/proptag/0x370E001F', [string]$inlineImage.mimeType)
-                $propertyAccessor.SetProperty('http://schemas.microsoft.com/mapi/proptag/0x37140003', 4)
-                $propertyAccessor.SetProperty('http://schemas.microsoft.com/mapi/proptag/0x7FFE000B', $true)
-            } finally {
-                if ($propertyAccessor) { [void][Runtime.InteropServices.Marshal]::ReleaseComObject($propertyAccessor) }
-                if ($attachment) { [void][Runtime.InteropServices.Marshal]::ReleaseComObject($attachment) }
-            }
+    foreach ($inlineImage in @($manifest.inlineImages)) {
+        $attachment = $null
+        $propertyAccessor = $null
+        try {
+            $attachment = $mail.Attachments.Add([string]$inlineImage.path)
+            $propertyAccessor = $attachment.PropertyAccessor
+            $propertyAccessor.SetProperty('http://schemas.microsoft.com/mapi/proptag/0x3712001F', [string]$inlineImage.contentId)
+            $propertyAccessor.SetProperty('http://schemas.microsoft.com/mapi/proptag/0x370E001F', [string]$inlineImage.mimeType)
+            $propertyAccessor.SetProperty('http://schemas.microsoft.com/mapi/proptag/0x37140003', 4)
+            $propertyAccessor.SetProperty('http://schemas.microsoft.com/mapi/proptag/0x7FFE000B', $true)
+        } finally {
+            if ($propertyAccessor) { [void][Runtime.InteropServices.Marshal]::ReleaseComObject($propertyAccessor) }
+            if ($attachment) { [void][Runtime.InteropServices.Marshal]::ReleaseComObject($attachment) }
         }
     }
-    $mail.HTMLBody = Get-Content -Raw -LiteralPath ([string]$manifest.htmlPath)
+    $mail.HTMLBody = $htmlBody
 
     if ($Send) {
         $mail.Send()
@@ -121,6 +142,7 @@ try {
             requestDate = [string]$manifest.requestDate
             startTime = [string]$manifest.startTime
             requestIds = @($manifest.requestIds)
+            testMode = [bool]$manifest.testMode
             reusedDraft = $reusedDraft
         }
         $audit | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $lastEmailPath -Encoding UTF8

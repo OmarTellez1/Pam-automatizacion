@@ -23,7 +23,7 @@ body {
     linear-gradient(180deg, #f8f9fb 0%, var(--background) 100%);
 }
 
-button, input { font: inherit; }
+button, input, select { font: inherit; }
 a { color: inherit; }
 
 .visually-hidden {
@@ -134,13 +134,47 @@ a { color: inherit; }
 }
 
 .button-primary:hover { background: var(--blue-dark); transform: translateY(-1px); }
-.button:focus-visible, .back-link:focus-visible, input:focus-visible, .reveal-button:focus-visible, .marker-button:focus-visible { outline: 3px solid rgba(49, 87, 213, 0.25); outline-offset: 3px; }
+.button:focus-visible, .back-link:focus-visible, input:focus-visible, select:focus-visible, .reveal-button:focus-visible, .marker-button:focus-visible { outline: 3px solid rgba(49, 87, 213, 0.25); outline-offset: 3px; }
 
 .button-secondary {
   color: #8b93a2;
   background: rgba(255, 255, 255, 0.68);
   border-color: var(--line);
   cursor: not-allowed;
+}
+
+.button-test {
+  color: #145744;
+  background: #e7f7f1;
+  border-color: #a9dacb;
+  box-shadow: 0 10px 24px rgba(20, 87, 68, 0.1);
+}
+.button-test:hover { background: #d9f1e8; transform: translateY(-1px); }
+
+.button-danger {
+  color: #8c2430;
+  background: #fff1f2;
+  border-color: #efb6bc;
+  box-shadow: 0 10px 24px rgba(140, 36, 48, 0.1);
+}
+.button-danger:hover { background: #ffe5e8; transform: translateY(-1px); }
+.button:disabled { opacity: 0.62; cursor: wait; transform: none; }
+.button.is-disabled {
+  opacity: 0.55;
+  cursor: wait;
+  pointer-events: none;
+  transform: none;
+}
+[hidden] { display: none !important; }
+
+.automation-status {
+  width: min(100%, 560px);
+  min-height: 1.4em;
+  margin: 18px auto 0;
+  color: var(--muted);
+  text-align: center;
+  font-size: 0.84rem;
+  line-height: 1.45;
 }
 
 .button-neutral {
@@ -187,6 +221,22 @@ a { color: inherit; }
 .result-time { margin: 10px 2px 0; color: var(--muted); font-size: 0.72rem; }
 .result-dialog-actions { display: flex; gap: 10px; margin-top: 22px; }
 .result-button { min-width: 0; min-height: 48px; flex: 1; justify-content: center; }
+.success-dialog { max-width: 390px; text-align: center; }
+.success-dialog-icon {
+  display: grid;
+  width: 48px;
+  height: 48px;
+  margin: 0 auto 14px;
+  place-items: center;
+  border-radius: 50%;
+  color: white;
+  background: var(--mint);
+  font-size: 1.45rem;
+  font-weight: 850;
+}
+.success-dialog h2 { margin-top: 7px; }
+.success-dialog .result-description { margin-bottom: 20px; }
+.success-dialog .result-button { width: 100%; }
 
 .button-secondary small { font-size: 0.67rem; text-transform: uppercase; letter-spacing: 0.08em; }
 .back-link { color: var(--blue); font-size: 0.86rem; font-weight: 700; text-decoration: none; }
@@ -215,6 +265,19 @@ a { color: inherit; }
   text-align: center;
 }
 
+.outlook-notice {
+  margin-bottom: 14px;
+  padding: 13px 16px;
+  border: 1px solid #bfd0f5;
+  border-radius: 10px;
+  color: #24437f;
+  background: #edf3ff;
+  font-size: 0.84rem;
+  font-weight: 650;
+  line-height: 1.5;
+  text-align: center;
+}
+
 .form-card {
   padding: 34px;
   border: 1px solid rgba(23, 32, 51, 0.1);
@@ -232,9 +295,12 @@ a { color: inherit; }
 .marker-button { padding: 6px 10px; border: 1px solid #cfd5df; border-radius: 8px; color: var(--blue); background: white; font-size: 0.72rem; font-weight: 750; cursor: pointer; }
 .marker-button:hover { border-color: var(--blue); background: #f7f9ff; }
 .field input { width: 100%; height: 52px; padding: 0 14px; border: 1px solid #cfd5df; border-radius: 10px; color: var(--ink); background: white; }
+.field select { height: 52px; padding: 0 36px 0 14px; border: 1px solid #cfd5df; border-radius: 10px; color: var(--ink); background: white; }
+.time-selection { display: grid; grid-template-columns: minmax(0, 1fr) 110px; gap: 10px; }
 .field textarea { width: 100%; min-height: 112px; resize: vertical; padding: 13px 14px; border: 1px solid #cfd5df; border-radius: 10px; color: var(--ink); background: white; line-height: 1.5; }
 .field input::placeholder { color: #99a1b0; }
 .field input:focus { border-color: var(--blue); outline: 3px solid rgba(49, 87, 213, 0.12); }
+.field select:focus { border-color: var(--blue); outline: 3px solid rgba(49, 87, 213, 0.12); }
 .field textarea:focus { border-color: var(--blue); outline: 3px solid rgba(49, 87, 213, 0.12); }
 .rich-editor {
   min-height: 320px;
@@ -286,6 +352,7 @@ a { color: inherit; }
   .back-link { font-size: 0.78rem; }
   .result-dialog { padding: 22px 18px; }
   .result-ids { grid-template-columns: 1fr; max-height: 260px; overflow: auto; }
+  .time-selection { grid-template-columns: minmax(0, 1fr) 92px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -5,8 +5,11 @@ import {
   expectedReleaseText,
   formatIsoDateAsDayMonthYear,
   formatTime12Hour,
+  parseFormattedTime12Hour,
+  parseTime12Hour,
   parseDayMonthForEcuador,
   requestKey,
+  splitTime24Hour,
   validateIsoDate,
   validateStartTime,
 } from "../src/request-config.mjs";
@@ -52,12 +55,22 @@ test("añade el año vigente de Ecuador a una fecha dd/mm", () => {
   );
 });
 
-test("valida hora de 24 horas y la convierte para confirmación", () => {
+test("convierte de forma segura entre 12 y 24 horas", () => {
   assert.equal(validateStartTime("14:00"), "14:00");
+  assert.equal(parseTime12Hour("02:00", "PM"), "14:00");
+  assert.equal(parseTime12Hour("12:00", "AM"), "00:00");
+  assert.equal(parseTime12Hour("12:00", "PM"), "12:00");
+  assert.deepEqual(splitTime24Hour("00:15"), { startTime12: "12:15", startPeriod: "AM" });
+  assert.deepEqual(splitTime24Hour("14:30"), { startTime12: "02:30", startPeriod: "PM" });
   assert.equal(formatTime12Hour("14:00"), "02:00 PM");
   assert.equal(formatTime12Hour("01:00"), "01:00 AM");
   assert.equal(formatTime12Hour("00:00"), "12:00 AM");
   assert.equal(formatTime12Hour("12:00"), "12:00 PM");
+  assert.equal(parseFormattedTime12Hour("02:30 PM"), "14:30");
+  assert.equal(parseFormattedTime12Hour("2:30 pm"), "14:30");
   assert.throws(() => validateStartTime("24:00"), /24 horas/);
   assert.throws(() => validateStartTime("2:00 PM"), /24 horas/);
+  assert.throws(() => parseTime12Hour("13:00", "PM"), /AM o PM/);
+  assert.throws(() => parseTime12Hour("02:00", "XX"), /AM o PM/);
+  assert.throws(() => parseFormattedTime12Hour("14:30"), /AM\/PM/);
 });

@@ -1,13 +1,10 @@
 import { createHash } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { EXPECTED_REQUEST_COUNT } from "./request-config.mjs";
+import { validateSimulatedRequestIds } from "./simulation.mjs";
 
 const projectDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const templatePath = path.join(projectDirectory, "EMAIL_TEMPLATE.md");
-const outputPath = path.join(projectDirectory, "run-results", "CORREO_ACCESOS_PAM.md");
-const htmlTemplatePath = path.join(projectDirectory, "EMAIL_TEMPLATE.html");
 const htmlOutputPath = path.join(projectDirectory, "run-results", "CORREO_ACCESOS_PAM.html");
 export const REQUEST_IDS_PLACEHOLDER = "{{REQUEST_IDS}}";
 const reasonPlaceholder = "{{REQUEST_REASON}}";
@@ -66,32 +63,31 @@ export function requireSingleRequestIdsPlaceholder(template) {
   return html;
 }
 
-export function normalizeRequestIds(requestIds) {
+export function normalizeRequestIds(requestIds, expectedCount) {
   if (!Array.isArray(requestIds)) {
     throw new TypeError("Los Request ID deben proporcionarse como una lista.");
   }
 
   const normalized = requestIds.map((value) => String(value).trim());
-  if (normalized.length !== EXPECTED_REQUEST_COUNT) {
-    throw new Error(`Se requieren exactamente ${EXPECTED_REQUEST_COUNT} Request ID.`);
+  if (normalized.length < 1) {
+    throw new Error("Se requiere al menos un Request ID.");
+  }
+  if (expectedCount !== undefined) {
+    if (!Number.isSafeInteger(expectedCount) || expectedCount < 1) {
+      throw new Error("La cantidad de cuentas favoritas no es válida.");
+    }
+    if (normalized.length !== expectedCount) {
+      throw new Error(`Se requieren ${expectedCount} Request ID; se encontraron ${normalized.length}.`);
+    }
   }
   if (normalized.some((value) => !/^\d+$/.test(value))) {
     throw new Error("Todos los Request ID deben contener únicamente dígitos.");
   }
-  if (new Set(normalized).size !== EXPECTED_REQUEST_COUNT) {
+  if (new Set(normalized).size !== normalized.length) {
     throw new Error("Los Request ID deben ser únicos.");
   }
 
   return normalized;
-}
-
-export function renderAccessEmailMarkdown(template, requestIds) {
-  const normalized = normalizeRequestIds(requestIds);
-  if (!template.includes(REQUEST_IDS_PLACEHOLDER)) {
-    throw new Error(`La plantilla no contiene el marcador ${REQUEST_IDS_PLACEHOLDER}.`);
-  }
-
-  return template.replace(REQUEST_IDS_PLACEHOLDER, normalized.join("<br>\n"));
 }
 
 export function migrateLegacyRequestIdsPlaceholder(template) {
@@ -120,6 +116,48 @@ export function renderAccessEmailHtml(template, requestIds, options = {}) {
     if (replaced !== null) html = replaced;
   }
   return html;
+}
+
+export function extractValidatedRequestIds(result) {
+  if (!result || typeof result !== "object") {
+    throw new Error("El resultado de solicitudes no es un objeto válido.");
+  }
+
+  if (result.testMode === true) {
+    if (
+      !Number.isSafeInteger(result.favoriteCount) ||
+      result.favoriteCount < 1 ||
+      result.validatedFavoriteCount !== result.favoriteCount ||
+      result.submitted !== 0
+    ) {
+      throw new Error("El resultado de prueba no confirma todos los formularios de Favorites.");
+    }
+    return validateSimulatedRequestIds(result.requestIds);
+  }
+
+  const legacyPendingCount = Array.isArray(result.pending) ? result.pending.length : undefined;
+  const favoriteCount = result.favoriteCount ?? legacyPendingCount;
+  if (!Number.isSafeInteger(favoriteCount) || favoriteCount < 1) {
+    throw new Error("El resultado no indica una cantidad válida de cuentas favoritas.");
+  }
+
+  const requestIds = normalizeRequestIds(result.requestIds, favoriteCount);
+  if (!Array.isArray(result.pending) || result.pending.length !== favoriteCount) {
+    throw new Error(`El resultado debe contener ${favoriteCount} solicitudes Pending.`);
+  }
+  if (result.pending.some((request) => request?.status !== "Pending")) {
+    throw new Error("Todas las solicitudes utilizadas para el correo deben estar en estado Pending.");
+  }
+
+  const pendingIds = normalizeRequestIds(
+    result.pending.map((request) => request?.id),
+    favoriteCount,
+  );
+  const pendingSet = new Set(pendingIds);
+  if (requestIds.some((requestId) => !pendingSet.has(requestId))) {
+    throw new Error("Los Request ID no coinciden con las solicitudes Pending.");
+  }
+  return requestIds;
 }
 
 export async function materializeInlineImages(html, options = {}) {
@@ -153,26 +191,9 @@ export async function materializeInlineImages(html, options = {}) {
   return { html: convertedHtml, inlineImages };
 }
 
-export async function generateAccessEmailMarkdown(requestIds) {
-  const template = await readFile(templatePath, "utf8");
-  const markdown = renderAccessEmailMarkdown(template, requestIds);
-  await mkdir(path.dirname(outputPath), { recursive: true });
-  await writeFile(outputPath, markdown, "utf8");
-  return outputPath;
-}
-
 export async function generateAccessEmailArtifacts(requestIds, options = {}) {
-  const normalized = normalizeRequestIds(requestIds);
-  const [markdownTemplate, htmlTemplate] = await Promise.all([
-    readFile(templatePath, "utf8"),
-    readFile(htmlTemplatePath, "utf8"),
-  ]);
-  const markdown = renderAccessEmailMarkdown(markdownTemplate, normalized);
-  const html = renderAccessEmailHtml(options.htmlTemplate ?? htmlTemplate, normalized, options);
-  await mkdir(path.dirname(outputPath), { recursive: true });
-  await Promise.all([
-    writeFile(outputPath, markdown, "utf8"),
-    writeFile(htmlOutputPath, html, "utf8"),
-  ]);
-  return { markdownPath: outputPath, htmlPath: htmlOutputPath };
+  const html = renderAccessEmailHtml(options.htmlTemplate, requestIds, options);
+  await mkdir(path.dirname(htmlOutputPath), { recursive: true });
+  await writeFile(htmlOutputPath, html, "utf8");
+  return { htmlPath: htmlOutputPath };
 }

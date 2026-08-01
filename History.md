@@ -17,14 +17,14 @@ Este documento nunca debe contener contraseñas, semillas TOTP, códigos tempora
 El proyecto automatiza un flujo interno en BeyondInsight Password Safe, disponible únicamente en la red corporativa en `https://10.30.17.117`:
 
 1. Inicia sesión con usuario, contraseña y un código TOTP generado desde la semilla de Microsoft Authenticator.
-2. Entra a las 14 cuentas favoritas configuradas para el usuario.
+2. Entra en `Accounts > Browse By Category > Favorites` y detecta todas las cuentas disponibles.
 3. Solicita una fecha `dd/mm`; el año se obtiene automáticamente según `America/Guayaquil`.
 4. Solicita una hora `HH:mm` de 24 horas y la convierte al formato visual de 12 horas usado por el portal.
-5. Crea una solicitud de acceso de 8 horas para cada una de las 14 cuentas.
+5. Crea una solicitud de acceso de 1 a 8 horas para cada cuenta favorita.
 6. Consulta exclusivamente `Requests > Pending`, sin abrir ni utilizar `Approved`.
-7. Extrae exactamente 14 `Request ID` únicos.
+7. Extrae un `Request ID` único por cada cuenta encontrada.
 8. Si el toggle indica correo, construye y envía el mensaje mediante Outlook clásico.
-9. Si indica interfaz web, muestra los 14 IDs en un diálogo local con opción de copiarlos.
+9. Si indica interfaz web, muestra todos los IDs en un diálogo local con opción de copiarlos.
 
 La razón configurada actualmente es:
 
@@ -88,7 +88,7 @@ Esta pregunta fue reemplazada posteriormente por el toggle persistente de la int
 Existen dos lanzadores con responsabilidades deliberadamente separadas:
 
 - `INICIAR_PRUEBA.cmd`: abre la terminal y Chrome visible, completa y valida solamente el primer formulario y lo descarta. No contiene `-Execute`, no crea solicitudes, no envía correo y no abre resultados.
-- `INICIAR_AUTOMATIZACION.cmd`: es el lanzador real. Contiene `-Execute`, procesa las 14 solicitudes con Chrome oculto y ejecuta la acción final persistida.
+- `INICIAR_AUTOMATIZACION.cmd`: es el lanzador real. Contiene `-Execute`, procesa todas las cuentas actuales de `Favorites` con Chrome oculto y ejecuta la acción final persistida.
 
 Durante el desarrollo, un agente nunca debe ejecutar `INICIAR_AUTOMATIZACION.cmd` ni usar `-Execute` para verificar cambios, salvo autorización inequívoca del usuario para crear solicitudes reales.
 
@@ -175,6 +175,62 @@ Durante el desarrollo, un agente nunca debe ejecutar `INICIAR_AUTOMATIZACION.cmd
 - Después del primer guardado, el formulario recupera exclusivamente el HTML saneado que configuró el usuario.
 - La suite completa aprobó 62 pruebas. Una validación visible en Chrome confirmó el estado inicial vacío, el guardado, la recarga del contenido y cero errores de consola.
 
+### 15. Configuración multiusuario de Outlook clásico
+
+- El formulario de credenciales incorpora `Tu correo de Outlook` y lo persiste como `OUTLOOK_EMAIL` en `.env`; los campos vacíos continúan conservando sus valores anteriores durante una edición.
+- El estado de credenciales configuradas exige usuario, contraseña, clave TOTP y un correo de Outlook válido, sin devolver ninguno de esos valores al navegador.
+- Outlook clásico usa la sesión ya iniciada y selecciona exactamente la cuenta cuyo `SmtpAddress` coincide con `OUTLOOK_EMAIL`; ya no existe un remitente fijo en archivos versionados.
+- Una ejecución real configurada para correo valida remitente, destinatarios, asunto, contenido y marcador antes de abrir el portal, evitando crear solicitudes si el correo aún no está listo.
+- `Para`, `CC` y contenido comienzan vacíos en `.env.mail`. Solo aparecen después de que el usuario guarde su configuración; el asunto conserva `ACCESOS AL PAM` como propuesta inicial.
+- La página de correo advierte que el envío automático requiere Outlook clásico y que el nuevo Outlook no es compatible con COM.
+- Se retiraron las plantillas predeterminadas, la configuración fija `mail-config.json`, los ejemplos obsoletos y la integración Microsoft Graph con sus scripts y dependencias Azure. El HTML definitivo nace exclusivamente del contenido configurado en la interfaz.
+- La suite quedó en 58 pruebas aprobadas después de retirar cinco pruebas exclusivas de Graph y conservar la cobertura del remitente, las solicitudes `Pending` y el HTML. Chrome visible confirmó la nueva credencial, el aviso, los campos iniciales vacíos, el guardado, la recarga y cero errores de consola.
+
+### 16. Estados independientes y hora AM/PM
+
+- `Tu correo de Outlook` se trasladó desde credenciales PAM hasta `Configurar envío de correo`, donde se guarda como `PAM_MAIL_SENDER` junto con el resto del mensaje en `.env.mail`.
+- Las credenciales PAM vuelven a depender exclusivamente de `BI_USERNAME`, `BI_PASSWORD` y `BI_TOTP_SECRET`.
+- La portada muestra `Configurar credenciales del PAM` o `Editar credenciales del PAM`, `Configurar solicitud` o `Editar solicitud`, y `Configurar envío de correo` o `Editar envío de correo`, según el estado independiente de cada API.
+- La interfaz de solicitud recibe la hora como `hh:mm` y un selector `AM/PM`. El servidor convierte casos límite como `12:00 AM` a `00:00` y `12:00 PM` a `12:00`, manteniendo `PAM_START_TIME` en el formato de 24 horas requerido por BeyondInsight.
+- Las 58 pruebas aprobaron. Chrome visible confirmó ambos estados de los tres botones, la precarga `02:15 PM`, el envío de `12:05 AM`, el remitente dentro del formulario de correo y cero mensajes de consola.
+
+### 17. Favorites dinámico y hora de portal en 12 horas
+
+- La automatización entra explícitamente en `Accounts > Browse By Category > Favorites` antes de leer las cuentas.
+- Se eliminó la constante global de 14 elementos. El contador visible `N items` determina cuántas filas, solicitudes `Pending` e IDs deben existir en esa ejecución.
+- El resultado guarda `favoriteCount`; la preparación del correo, el script PowerShell y el diálogo web vuelven a comprobar esa cantidad y la unicidad de los IDs.
+- Las solicitudes `Pending` finales se limitan a las identidades de las cuentas encontradas en `Favorites`, evitando incorporar solicitudes ajenas con la misma fecha y razón.
+- La interfaz local recibe `hh:mm` y `AM/PM`, y persiste la equivalencia de 24 horas. Una validación posterior contra el portal real confirmó que su DOM es `input[type="time"]`: Playwright debe asignar `14:30`, aunque Chrome lo muestre como `02:30 PM`.
+- Las 59 pruebas aprobaron con cantidades dinámicas de 3, 4 y 5 favoritos y con casos de conversión de hora visible.
+
+### 18. Botones de prueba y ejecución real
+
+- La portada permite iniciar la automatización real y solicita confirmación antes de autorizar `Submit Request`.
+- `BOTON_PRUEBA=TRUE` hace visible `Iniciar prueba`; cualquier otro valor lo oculta. Los archivos `.env` nuevos incluyen la variable deshabilitada como `FALSE`.
+- El modo `--test-run` recorre todas las cuentas de `Favorites`, completa fecha, hora, duración y razón, y usa `Cancel` más `Discard Changes` en cada formulario. Guarda `submitted: 0`.
+- Los resultados de prueba se marcan con `testMode: true` y aceptan únicamente la lista fija de 14 IDs simulados solicitada por el usuario. El diálogo los rotula como simulados; el correo antepone `[PRUEBA]` al asunto y usa una auditoría `last-test-email.json` separada de los envíos reales.
+- La ejecución real mantiene una validación independiente: un ID único y una solicitud `Pending` por cada cuenta favorita.
+- La API local impide ejecuciones simultáneas, comprueba credenciales y configuración antes de iniciar PowerShell y expone solo estado y mensajes no sensibles.
+- La suite completa aprobó 65 pruebas. Chrome visible, con el inicio interceptado, confirmó la aparición del botón de prueba, su advertencia, un único POST simulado, la cancelación segura del botón real, el diálogo rotulado como `Request ID simulados` y cero errores de consola.
+
+### 19. Corrección mediante prueba completa contra PAM y logs
+
+- El primer fallo del botón de prueba ocurría antes de abrir Chrome: `request-access.mjs` importaba `projectDirectory` desde un módulo que no lo exportaba. Se corrigió el origen del import y se añadió una prueba que carga el módulo completo para detectar incompatibilidades ESM.
+- La ejecución visible contra `https://10.30.17.117` mostró que el encabezado exacto es `Browse by Category` y que el contador visual `14 items` no es localizable. El flujo ahora selecciona `Favorites` y cuenta directamente las filas reales de la grilla.
+- El calendario usa `August 1, 2026` como etiqueta accesible del día, pero conserva `August 01, 2026` en el campo. La verificación acepta correctamente esa representación visible con día de dos dígitos.
+- El control `Start Time` es `input[type="time"]`: recibe `16:00` y Chrome lo muestra como `04:00 PM`. Se eliminó el intento incorrecto de llenar el DOM con `04:00 PM`.
+- La prueba real y visible del 1 de agosto de 2026 autenticó correctamente, recorrió las 14 cuentas actuales de `Favorites`, llenó y descartó los 14 formularios y terminó con `submitted: 0`. No presionó `Submit Request`, no creó solicitudes y no envió correo; publicó únicamente los IDs simulados en el resultado web.
+- Se añadió `logs/` en la raíz. El proceso iniciado desde localhost conserva stdout y stderr, los refleja en la terminal y muestra en la interfaz el error concreto y la ruta del log. `run-artifacts/` continúa guardando captura e informe del estado del navegador.
+- La suite completa aprobó 67 pruebas, incluida la carga real de dependencias de `request-access.mjs` y la publicación del error concreto con su ruta de log.
+
+### 20. Correo de prueba protegido y bloqueo total de la portada
+
+- Se auditó la última prueba sin exponer destinatarios ni contenido: `last-run.json`, `email-manifest.json`, el HTML generado y `last-test-email.json` contienen exactamente `137288`, `137287`, `137286`, `137284`, `137283`, `137282`, `137281`, `137280`, `137278`, `137276`, `137275`, `137274`, `137273` y `137271`. El registro real separado `last-email.json` conserva los `140xxx` históricos del 31 de julio de 2026.
+- Outlook ahora crea un mensaje nuevo en cada ejecución y no recupera borradores. Antes de enviar recalcula el hash del HTML, exige que el marcador ya se haya sustituido, comprueba la presencia de cada ID y, en prueba, contrasta orden y contenido con la lista fija autorizada.
+- La portada deshabilita los tres enlaces de configuración, el toggle y los botones de prueba y producción durante cualquier ejecución. El estado explica que se reactivarán al terminar con éxito o con error.
+- Una finalización exitosa cuya acción fue correo abre un diálogo pequeño de confirmación con botón `Cerrar`; una ejecución fallida no puede mostrar esa confirmación.
+- Aprobaron 14 pruebas automatizadas relevantes y una validación visible en Chrome con API simulada comprobó bloqueo, restauración, diálogo de éxito y restauración después de error. No se abrió PAM ni se envió correo durante esta validación.
+
 ### 7. Migración y Git
 
 - El proyecto se copió íntegramente desde el directorio generado por Codex a `C:\pam automatizacion`.
@@ -193,14 +249,14 @@ El flujo funcional todavía usa:
 - Outlook clásico mediante COM para el envío.
 - Una interfaz de terminal para fecha y hora; el resultado final se selecciona en la web.
 - Una interfaz web local para configurar credenciales, parámetros de solicitud y envío de correo.
-- `.env` para las credenciales en texto legible y excluido de Git.
-- `.env.mail` para destinatarios, copias, asunto y HTML; `mail-config.json` conserva la cuenta remitente esperada.
+- `.env` para las tres credenciales PAM y los parámetros de solicitud, en texto legible y excluido de Git.
+- `.env.mail` para remitente de Outlook, destinatarios, copias, asunto y HTML; no existen destinatarios ni plantillas fijos versionados.
 
 Los resultados locales se guardan dentro de `run-results/`; los diagnósticos y capturas de fallos se guardan en `run-artifacts/`.
 
 ## Próxima dirección solicitada
 
-La aplicación web local ya incluye credenciales, parámetros de solicitud y contenido del correo. La siguiente etapa es integrar la decisión de envío, el inicio controlado de la automatización, el progreso y los resultados.
+La aplicación web local ya incluye credenciales, parámetros de solicitud, contenido del correo, decisión final, inicio controlado y presentación de resultados. La siguiente etapa puede ampliar el detalle de progreso por cada cuenta sin mezclar esa presentación con la lógica de automatización.
 
 ### Interfaz web local
 
@@ -208,7 +264,7 @@ La página ya se sirve únicamente en `127.0.0.1` con HTML, CSS y JavaScript sin
 
 - Validación clara sin cerrar la interfaz.
 - Separación muy visible entre modo de prueba y ejecución real.
-- Estado del proceso, errores comprensibles y presentación de los 14 IDs.
+- Estado del proceso, errores comprensibles y presentación de todos los IDs dinámicos.
 - Protección contra dobles clics o ejecuciones simultáneas.
 - Ejecución exclusiva en loopback; no debe exponerse a la red local.
 
@@ -245,10 +301,10 @@ La configuración pendiente de otros valores importantes debe incorporarse gradu
 - Trabajar desde `C:\pam automatizacion`.
 - Leer los tres documentos de contexto antes de modificar código.
 - No mostrar ni copiar secretos reales en conversaciones, documentación, código de prueba o logs.
-- Mantener `INICIAR_PRUEBA.cmd` como una ruta incapaz de crear solicitudes o enviar correo.
+- Mantener `INICIAR_PRUEBA.cmd` como una ruta incapaz de presionar `Submit Request`; el correo de prueba con IDs simulados sí está permitido según el toggle.
 - No ejecutar `-Execute` durante pruebas sin autorización expresa.
 - Consultar únicamente `Pending`; no añadir navegación a `Approved`.
-- Exigir exactamente 14 cuentas y 14 Request ID únicos.
+- Usar exclusivamente las cuentas de `Accounts > Browse By Category > Favorites` y exigir un Request ID único por cada una.
 - Mantener la detección de solicitudes y correos duplicados.
 - No automatizar Outlook mediante coordenadas o control visual.
 - Validar primero de manera segura cualquier cambio de la web.

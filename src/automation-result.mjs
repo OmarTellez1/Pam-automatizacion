@@ -1,6 +1,6 @@
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
-import { normalizeRequestIds } from "./email-content.mjs";
+import { extractValidatedRequestIds } from "./email-content.mjs";
 import { projectDirectory } from "./env-config.mjs";
 
 export const defaultAutomationResultPath = path.join(
@@ -18,7 +18,8 @@ export async function getLatestAutomationResult(options = {}) {
     ]);
     if (result.sendEmail !== false) return { available: false };
 
-    const requestIds = normalizeRequestIds(result.requestIds);
+    const requestIds = extractValidatedRequestIds(result);
+    const favoriteCount = result.favoriteCount ?? result.pending.length;
     const configuredTime = Date.parse(result.completedAt);
     const completedAt = Number.isFinite(configuredTime)
       ? new Date(configuredTime).toISOString()
@@ -27,6 +28,8 @@ export async function getLatestAutomationResult(options = {}) {
       available: true,
       resultId: `${completedAt}:${requestIds.join(",")}`,
       completedAt,
+      favoriteCount,
+      testMode: result.testMode === true,
       requestIds,
     };
   } catch (error) {

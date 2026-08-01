@@ -1,4 +1,4 @@
-import { access, readFile } from "node:fs/promises";
+import { access } from "node:fs/promises";
 import path from "node:path";
 import {
   createProjectEnvironmentFile,
@@ -6,14 +6,13 @@ import {
   readProjectEnvironment,
   updateProjectEnvironment,
 } from "./env-config.mjs";
-import { validateEmailAddress } from "./outlook-email.mjs";
+import { validateEmailAddress } from "./email-address.mjs";
 import {
   migrateLegacyRequestIdsPlaceholder,
   requireSingleRequestIdsPlaceholder,
 } from "./email-content.mjs";
 
 export const defaultMailEnvPath = path.join(projectDirectory, ".env.mail");
-const legacyMailConfigPath = path.join(projectDirectory, "mail-config.json");
 const MAX_CONTENT_LENGTH = 8_000_000;
 const ALLOWED_TAGS = new Set([
   "a", "b", "blockquote", "br", "div", "em", "font", "h1", "h2", "h3", "h4", "h5", "h6",
@@ -119,6 +118,7 @@ export function parseRecipientList(value, fieldName, options = {}) {
 }
 
 export function validateMailSettings(input) {
+  const sender = validateEmailAddress(input?.sender, "Tu correo de Outlook");
   const toRecipients = parseRecipientList(input?.to, "Para", { required: true });
   const ccRecipients = parseRecipientList(input?.cc, "CC");
   const toSet = new Set(toRecipients.map((item) => item.toLowerCase()));
@@ -132,6 +132,7 @@ export function validateMailSettings(input) {
   const contentHtml = sanitizeEmailHtml(input?.contentHtml);
   requireSingleRequestIdsPlaceholder(contentHtml);
   return {
+    sender,
     to: toRecipients.join(";"),
     cc: ccRecipients.join(";"),
     toRecipients,
@@ -141,14 +142,12 @@ export function validateMailSettings(input) {
   };
 }
 
-async function loadInitialSettings() {
-  const legacyConfig = await readFile(legacyMailConfigPath, "utf8").then(JSON.parse);
-  const to = legacyConfig.recipient ?? "";
-  const cc = Array.isArray(legacyConfig.cc) ? legacyConfig.cc.filter(Boolean).join(";") : "";
+function loadInitialSettings() {
   return {
-    to,
-    cc,
-    subject: legacyConfig.subject ?? "ACCESOS AL PAM",
+    sender: "",
+    to: "",
+    cc: "",
+    subject: "ACCESOS AL PAM",
     contentHtml: "",
   };
 }
@@ -157,6 +156,7 @@ export async function loadMailSettings(options = {}) {
   const envPath = options.envPath ?? defaultMailEnvPath;
   const values = await readProjectEnvironment(envPath);
   return validateMailSettings({
+    sender: values.PAM_MAIL_SENDER,
     to: values.PAM_MAIL_TO,
     cc: values.PAM_MAIL_CC,
     subject: values.PAM_MAIL_SUBJECT,
@@ -169,10 +169,8 @@ export async function getMailSettingsState(options = {}) {
     return { configured: true, settings: await loadMailSettings(options) };
   } catch {
     const envPath = options.envPath ?? defaultMailEnvPath;
-    const [initialSettings, values] = await Promise.all([
-      loadInitialSettings(),
-      readProjectEnvironment(envPath),
-    ]);
+    const initialSettings = loadInitialSettings();
+    const values = await readProjectEnvironment(envPath);
     let contentHtml = "";
     if (String(values.PAM_MAIL_CONTENT_HTML ?? "").trim()) {
       try {
@@ -184,6 +182,7 @@ export async function getMailSettingsState(options = {}) {
     return {
       configured: false,
       settings: {
+        sender: values.PAM_MAIL_SENDER ?? initialSettings.sender,
         to: values.PAM_MAIL_TO ?? initialSettings.to,
         cc: values.PAM_MAIL_CC ?? initialSettings.cc,
         subject: values.PAM_MAIL_SUBJECT ?? initialSettings.subject,
@@ -197,6 +196,7 @@ export async function writeMailSettings(input, options = {}) {
   const envPath = options.envPath ?? defaultMailEnvPath;
   const settings = validateMailSettings(input);
   await updateProjectEnvironment({
+    PAM_MAIL_SENDER: settings.sender,
     PAM_MAIL_TO: settings.to,
     PAM_MAIL_CC: settings.cc,
     PAM_MAIL_SUBJECT: settings.subject,
@@ -213,8 +213,9 @@ export async function ensureMailSettingsFile(options = {}) {
   } catch (error) {
     if (error.code !== "ENOENT") throw error;
   }
-  const settings = await loadInitialSettings();
+  const settings = loadInitialSettings();
   return createProjectEnvironmentFile({
+    PAM_MAIL_SENDER: settings.sender,
     PAM_MAIL_TO: settings.to,
     PAM_MAIL_CC: settings.cc,
     PAM_MAIL_SUBJECT: settings.subject,

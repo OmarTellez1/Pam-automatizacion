@@ -2,12 +2,11 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { createInterface } from "node:readline/promises";
+import { fileURLToPath } from "node:url";
 import { parseYesNo, promptUntilValid } from "./interactive-input.mjs";
-import { generateAccessEmailArtifacts } from "./email-content.mjs";
 import {
   DEFAULT_HOURS,
   DEFAULT_REASON,
-  EXPECTED_REQUEST_COUNT,
   expectedReleaseText,
   formatIsoDateAsDayMonthYear,
   formatTime12Hour,
@@ -16,12 +15,14 @@ import {
   validateStartTime,
 } from "./request-config.mjs";
 import { loadRequestSettings } from "./request-settings.mjs";
+import { loadMailSettings } from "./mail-settings.mjs";
 import { finalActionSendsEmail, loadFinalAction } from "./final-action.mjs";
+import { SIMULATED_REQUEST_IDS } from "./simulation.mjs";
+import { projectDirectory } from "./env-config.mjs";
 import {
   TARGET_ORIGIN,
   isEnabled,
   openAuthenticatedSession,
-  projectDirectory,
   saveFailureArtifact,
 } from "./session.mjs";
 
@@ -36,6 +37,7 @@ async function parseArguments(argv) {
     emailInput: undefined,
     sendEmail: undefined,
     execute: false,
+    testRun: false,
     headed: isEnabled(process.env.BI_HEADED),
   };
 
@@ -45,8 +47,13 @@ async function parseArguments(argv) {
     else if (argument === "--time") result.startTime = argv[++index];
     else if (argument === "--email") result.emailInput = argv[++index];
     else if (argument === "--execute") result.execute = true;
+    else if (argument === "--test-run") result.testRun = true;
     else if (argument === "--headed") result.headed = true;
     else throw new Error(`Argumento desconocido: ${argument}`);
+  }
+
+  if (result.execute && result.testRun) {
+    throw new Error("Los modos real y de prueba no pueden ejecutarse al mismo tiempo.");
   }
 
   let storedSettings;
@@ -126,12 +133,35 @@ async function readGridRows(page) {
   });
 }
 
-async function loadAccountTargets(page) {
+async function openFavoriteAccounts(page) {
   await page.goto(ACCOUNTS_URL, { waitUntil: "domcontentloaded" });
-  await page.getByText(`${EXPECTED_REQUEST_COUNT} items`, { exact: true }).waitFor({
-    state: "visible",
-    timeout: 30_000,
-  });
+
+  const browseByCategory = page
+    .getByText(/^Browse by Category$/i, { exact: true })
+    .filter({ visible: true });
+  await browseByCategory.first().waitFor({ state: "visible", timeout: 30_000 });
+  if ((await browseByCategory.count()) !== 1) {
+    throw new Error("No se pudo identificar de forma única la sección Browse By Category.");
+  }
+
+  const favorites = page.getByText("Favorites", { exact: true }).filter({ visible: true });
+  await favorites.first().waitFor({ state: "visible", timeout: 15_000 });
+  if ((await favorites.count()) !== 1) {
+    throw new Error("No se pudo identificar de forma única la categoría Favorites.");
+  }
+  await favorites.click();
+  const rows = page.locator('tr[aria-label^="Row "]');
+  await rows.first().waitFor({ state: "visible", timeout: 30_000 });
+  await page.waitForTimeout(750);
+  const favoriteCount = await rows.count();
+  if (!Number.isSafeInteger(favoriteCount) || favoriteCount < 1) {
+    throw new Error("Favorites no contiene cuentas disponibles para solicitar acceso.");
+  }
+  return favoriteCount;
+}
+
+async function loadAccountTargets(page) {
+  const favoriteCount = await openFavoriteAccounts(page);
 
   const rows = await readGridRows(page);
   const targets = rows.map(({ index, cells }) => ({
@@ -141,11 +171,11 @@ async function loadAccountTargets(page) {
     application: cells.ApplicationName,
   }));
 
-  if (targets.length !== EXPECTED_REQUEST_COUNT) {
-    throw new Error(`Se esperaban ${EXPECTED_REQUEST_COUNT} cuentas favoritas; se encontraron ${targets.length}.`);
+  if (targets.length !== favoriteCount) {
+    throw new Error(`Favorites indica ${favoriteCount} cuentas, pero se encontraron ${targets.length} filas.`);
   }
-  if (new Set(targets.map(requestKey)).size !== EXPECTED_REQUEST_COUNT) {
-    throw new Error("Las 14 cuentas no tienen una combinación única de sistema, cuenta y aplicación.");
+  if (new Set(targets.map(requestKey)).size !== favoriteCount) {
+    throw new Error("Las cuentas de Favorites no tienen una combinación única de sistema, cuenta y aplicación.");
   }
 
   return targets;
@@ -212,6 +242,10 @@ async function setStartDate(page, locator, date) {
     day: "numeric",
     timeZone: "UTC",
   }).format(new Date(`${date}T00:00:00Z`));
+  const expectedInputLabel = `${new Intl.DateTimeFormat("en-US", {
+    month: "long",
+    timeZone: "UTC",
+  }).format(new Date(`${date}T00:00:00Z`))} ${String(day).padStart(2, "0")}, ${year}`;
 
   await locator.evaluate((visibleInput, target) => {
     const hiddenInput = visibleInput.parentElement?.querySelector('input[type="hidden"]');
@@ -240,16 +274,16 @@ async function setStartDate(page, locator, date) {
 
   await page.waitForTimeout(350);
   const actualLabel = await locator.inputValue();
-  if (actualLabel !== targetLabel) {
+  if (actualLabel !== expectedInputLabel) {
     throw new Error(
-      `El calendario no conservó la fecha solicitada. Esperada: ${targetLabel}; observada: ${actualLabel}`,
+      `El calendario no conservó la fecha solicitada. Esperada: ${expectedInputLabel}; observada: ${actualLabel}`,
     );
   }
 }
 
-async function openRequestForm(page, target) {
+async function openRequestForm(page, target, expectedCount) {
   const rows = page.locator('tr[aria-label^="Row "]');
-  if ((await rows.count()) !== EXPECTED_REQUEST_COUNT) {
+  if ((await rows.count()) !== expectedCount) {
     throw new Error("La tabla de cuentas cambió antes de abrir la solicitud.");
   }
 
@@ -339,8 +373,8 @@ async function fillRequestForm(page, options) {
   }
 }
 
-async function submitOneRequest(page, target, options) {
-  await openRequestForm(page, target);
+async function submitOneRequest(page, target, options, expectedCount) {
+  await openRequestForm(page, target, expectedCount);
   await fillRequestForm(page, options);
 
   if (!options.execute) {
@@ -382,24 +416,65 @@ async function cancelAutomation() {
   process.exit(130);
 }
 
+const isEntryPoint = process.argv[1] &&
+  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
+if (isEntryPoint) {
 process.on("SIGINT", cancelAutomation);
 
 try {
   const options = await parseArguments(process.argv.slice(2));
+  if ((options.execute || options.testRun) && options.sendEmail) {
+    await loadMailSettings();
+  }
   session = await openAuthenticatedSession({ headed: options.headed });
   const { page } = session;
   const targets = await loadAccountTargets(page);
+  const favoriteCount = targets.length;
   const existing = await findExistingRequests(page, options);
   const existingByKey = new Map(existing.map((request) => [requestKey(request), request]));
 
-  if (!options.execute) {
-    await page.goto(ACCOUNTS_URL, { waitUntil: "domcontentloaded" });
-    await page.getByText(`${EXPECTED_REQUEST_COUNT} items`, { exact: true }).waitFor({ state: "visible", timeout: 30_000 });
-    await submitOneRequest(page, targets[0], options);
+  if (options.testRun) {
+    const observedCount = await openFavoriteAccounts(page);
+    if (observedCount !== favoriteCount) {
+      throw new Error(`Favorites cambió de ${favoriteCount} a ${observedCount} cuentas durante la prueba.`);
+    }
+
+    let validated = 0;
+    for (const target of targets) {
+      await submitOneRequest(page, target, options, favoriteCount);
+      validated += 1;
+      console.log(`Formulario de prueba validado ${validated}/${favoriteCount}: ${target.system} / ${target.application}`);
+    }
+
+    const result = {
+      completedAt: new Date().toISOString(),
+      date: options.date,
+      startTime: options.startTime,
+      hours: options.sessionHours,
+      reason: options.reason,
+      submitted: 0,
+      favoriteCount,
+      validatedFavoriteCount: validated,
+      requestIds: [...SIMULATED_REQUEST_IDS],
+      sendEmail: options.sendEmail,
+      testMode: true,
+    };
+    const resultPath = await saveResult(result);
+    console.log(`Resultado de prueba guardado: ${resultPath}`);
+    console.log(`REQUEST_IDS_SIMULADOS=${SIMULATED_REQUEST_IDS.join(",")}`);
+  } else if (!options.execute) {
+    const observedCount = await openFavoriteAccounts(page);
+    if (observedCount !== favoriteCount) {
+      throw new Error(`Favorites cambió de ${favoriteCount} a ${observedCount} cuentas durante la ejecución.`);
+    }
+    await submitOneRequest(page, targets[0], options, favoriteCount);
     console.log(`Validación sin envío correcta para ${options.date}.`);
   } else {
-    await page.goto(ACCOUNTS_URL, { waitUntil: "domcontentloaded" });
-    await page.getByText(`${EXPECTED_REQUEST_COUNT} items`, { exact: true }).waitFor({ state: "visible", timeout: 30_000 });
+    const observedCount = await openFavoriteAccounts(page);
+    if (observedCount !== favoriteCount) {
+      throw new Error(`Favorites cambió de ${favoriteCount} a ${observedCount} cuentas durante la ejecución.`);
+    }
 
     let submitted = 0;
     for (const target of targets) {
@@ -407,13 +482,24 @@ try {
         console.log(`Solicitud existente: ${target.system} / ${target.application}`);
         continue;
       }
-      await submitOneRequest(page, target, options);
+      await submitOneRequest(page, target, options, favoriteCount);
       submitted += 1;
-      console.log(`Solicitud enviada ${submitted}/${EXPECTED_REQUEST_COUNT}: ${target.system} / ${target.application}`);
+      console.log(`Solicitud enviada ${submitted}/${favoriteCount}: ${target.system} / ${target.application}`);
     }
 
-    const pending = desiredRequests(await readPendingRequests(page), options);
+    const favoriteKeys = new Set(targets.map(requestKey));
+    const pending = desiredRequests(await readPendingRequests(page), options)
+      .filter((request) => favoriteKeys.has(requestKey(request)));
     const uniqueIds = [...new Set(pending.map((request) => request.id))];
+    const uniquePendingKeys = new Set(pending.map(requestKey));
+    if (pending.length !== favoriteCount || uniquePendingKeys.size !== favoriteCount) {
+      throw new Error(
+        `Se esperaban ${favoriteCount} solicitudes Pending, una por cuenta favorita; se encontraron ${pending.length}.`,
+      );
+    }
+    if (uniqueIds.length !== favoriteCount) {
+      throw new Error(`Se esperaban ${favoriteCount} Request ID únicos; se encontraron ${uniqueIds.length}.`);
+    }
     const result = {
       completedAt: new Date().toISOString(),
       date: options.date,
@@ -421,6 +507,7 @@ try {
       hours: options.sessionHours,
       reason: options.reason,
       submitted,
+      favoriteCount,
       pending,
       requestIds: uniqueIds,
       sendEmail: options.sendEmail,
@@ -429,12 +516,6 @@ try {
 
     console.log(`Resultado guardado: ${resultPath}`);
     console.log(`REQUEST_IDS=${uniqueIds.join(",")}`);
-    if (uniqueIds.length !== EXPECTED_REQUEST_COUNT) {
-      throw new Error(`Se esperaban ${EXPECTED_REQUEST_COUNT} Request ID únicos; se encontraron ${uniqueIds.length}.`);
-    }
-    const emailArtifacts = await generateAccessEmailArtifacts(uniqueIds);
-    console.log(`Correo Markdown generado: ${emailArtifacts.markdownPath}`);
-    console.log(`Correo HTML generado: ${emailArtifacts.htmlPath}`);
   }
 } catch (error) {
   const artifacts = await saveFailureArtifact(error.page ?? session?.page, error);
@@ -444,4 +525,5 @@ try {
 } finally {
   process.off("SIGINT", cancelAutomation);
   await (session?.browser ?? undefined)?.close().catch(() => {});
+}
 }

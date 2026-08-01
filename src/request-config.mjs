@@ -1,7 +1,6 @@
 export const DEFAULT_REASON =
   "Soporte y pruebas con usuario post producción - TIC PETER GOMEZ";
 export const DEFAULT_HOURS = 8;
-export const EXPECTED_REQUEST_COUNT = 14;
 
 export function validateIsoDate(value) {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
@@ -51,11 +50,39 @@ export function validateStartTime(value) {
   return normalized;
 }
 
-export function formatTime12Hour(value) {
+export function parseTime12Hour(value, period) {
+  const match = /^(0?[1-9]|1[0-2]):([0-5]\d)$/.exec(String(value ?? "").trim());
+  const normalizedPeriod = String(period ?? "").trim().toUpperCase();
+  if (!match || !["AM", "PM"].includes(normalizedPeriod)) {
+    throw new Error("La hora debe usar el formato hh:mm y seleccionar AM o PM.");
+  }
+
+  const displayHour = Number(match[1]);
+  const hour = normalizedPeriod === "AM"
+    ? displayHour % 12
+    : (displayHour % 12) + 12;
+  return `${String(hour).padStart(2, "0")}:${match[2]}`;
+}
+
+export function parseFormattedTime12Hour(value) {
+  const match = /^(0?[1-9]|1[0-2]):([0-5]\d)\s+(AM|PM)$/i.exec(String(value ?? "").trim());
+  if (!match) {
+    throw new Error("La hora debe usar el formato hh:mm AM/PM.");
+  }
+  return parseTime12Hour(`${match[1]}:${match[2]}`, match[3]);
+}
+
+export function splitTime24Hour(value) {
   const [hour, minute] = validateStartTime(value).split(":").map(Number);
-  const period = hour >= 12 ? "PM" : "AM";
-  const displayHour = hour % 12 || 12;
-  return `${String(displayHour).padStart(2, "0")}:${String(minute).padStart(2, "0")} ${period}`;
+  return {
+    startTime12: `${String(hour % 12 || 12).padStart(2, "0")}:${String(minute).padStart(2, "0")}`,
+    startPeriod: hour >= 12 ? "PM" : "AM",
+  };
+}
+
+export function formatTime12Hour(value) {
+  const { startTime12, startPeriod } = splitTime24Hour(value);
+  return `${startTime12} ${startPeriod}`;
 }
 
 export function applicationFamily(value) {

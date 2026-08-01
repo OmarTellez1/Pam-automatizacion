@@ -19,7 +19,7 @@ test("interpreta valores .env entre comillas sin perder caracteres especiales", 
   assert.equal(values.BI_PASSWORD, "p#a=s\\word");
 });
 
-test("guarda y vuelve a cargar las tres credenciales del proyecto", async () => {
+test("guarda y vuelve a cargar las tres credenciales del PAM", async () => {
   const directory = await mkdtemp(path.join(tmpdir(), "pam-env-"));
   const envPath = path.join(directory, ".env");
   const expected = {
@@ -29,7 +29,11 @@ test("guarda y vuelve a cargar las tres credenciales del proyecto", async () => 
   };
 
   await writeProjectCredentials(expected, { envPath });
-  assert.deepEqual(await loadProjectCredentials({ envPath }), expected);
+  assert.deepEqual(await loadProjectCredentials({ envPath }), {
+    username: expected.username,
+    password: expected.password,
+    totpSecret: expected.totpSecret,
+  });
   assert.equal(await credentialsAreConfigured(envPath), true);
   const contents = await readFile(envPath, "utf8");
   assert.match(contents, /^BI_USERNAME=/m);

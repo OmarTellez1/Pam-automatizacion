@@ -12,6 +12,7 @@ function showResult(type, message) {
 }
 
 function applySettings(settings) {
+  form.elements.sender.value = settings.sender ?? "";
   form.elements.to.value = settings.to ?? "";
   form.elements.cc.value = settings.cc ?? "";
   form.elements.subject.value = settings.subject ?? "";
@@ -124,6 +125,7 @@ form.addEventListener("submit", async (event) => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        sender: form.elements.sender.value,
         to: form.elements.to.value,
         cc: form.elements.cc.value,
         subject: form.elements.subject.value,

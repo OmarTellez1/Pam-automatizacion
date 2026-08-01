@@ -24,15 +24,15 @@
         <h1 id="page-title" class="visually-hidden">Acciones de Accesos PAM</h1>
         <div class="actions" aria-label="Acciones disponibles">
           <a class="button button-primary" href="/credenciales">
-            <span id="credentials-action-label">Configurar credenciales</span>
+            <span id="credentials-action-label">Configurar credenciales del PAM</span>
             <span aria-hidden="true">→</span>
           </a>
           <a class="button button-neutral" href="/solicitud">
-            <span>Configurar solicitud</span>
+            <span id="request-action-label">Configurar solicitud</span>
             <span aria-hidden="true">→</span>
           </a>
           <a class="button button-neutral" href="/correo">
-            <span>Configurar envío de correo</span>
+            <span id="mail-action-label">Configurar envío de correo</span>
             <span aria-hidden="true">→</span>
           </a>
           <button id="final-action-toggle" class="button button-toggle" type="button"
@@ -40,12 +40,17 @@
             <span id="final-action-label">Se mostrarán los IDs en esta interfaz al final</span>
             <span class="toggle-track" aria-hidden="true"><span></span></span>
           </button>
-          <button class="button button-secondary" type="button" disabled>
+          <button id="test-automation-button" class="button button-test" type="button" hidden disabled>
+            <span>Iniciar prueba</span>
+            <small>Sin Submit Request</small>
+          </button>
+          <button id="real-automation-button" class="button button-danger" type="button" disabled>
             <span>Iniciar automatización</span>
-            <small>Próxima etapa</small>
+            <small>Crea solicitudes reales</small>
           </button>
         </div>
         <p id="final-action-status" class="visually-hidden" role="status" aria-live="polite"></p>
+        <p id="automation-status" class="automation-status" role="status" aria-live="polite"></p>
       </section>
     </main>
 
@@ -53,14 +58,14 @@
       aria-labelledby="automation-result-title" aria-describedby="automation-result-description">
       <div class="result-dialog-header">
         <div>
-          <span class="result-kicker">Automatización completada</span>
+          <span id="automation-result-kicker" class="result-kicker">Automatización completada</span>
           <h2 id="automation-result-title">Request ID obtenidos</h2>
         </div>
         <button id="close-result-dialog" class="dialog-close" type="button"
           aria-label="Cerrar resultado">×</button>
       </div>
       <p id="automation-result-description" class="result-description">
-        Se obtuvieron exactamente 14 solicitudes. Puede copiar los IDs para utilizarlos donde necesite.
+        Se obtuvieron las solicitudes de las cuentas favoritas. Puede copiar los IDs para utilizarlos donde necesite.
       </p>
       <ol id="automation-result-ids" class="result-ids" aria-label="Request ID obtenidos"></ol>
       <p id="automation-result-time" class="result-time"></p>
@@ -73,6 +78,19 @@
         </button>
       </div>
       <p id="copy-result-status" class="visually-hidden" role="status" aria-live="polite"></p>
+    </dialog>
+
+    <dialog id="email-success-dialog" class="result-dialog success-dialog"
+      aria-labelledby="email-success-title" aria-describedby="email-success-description">
+      <span class="success-dialog-icon" aria-hidden="true">✓</span>
+      <span class="result-kicker">Automatización completada</span>
+      <h2 id="email-success-title">Correo enviado correctamente</h2>
+      <p id="email-success-description" class="result-description">
+        Outlook aceptó el correo generado por la automatización.
+      </p>
+      <button id="dismiss-email-success" class="button button-primary result-button" type="button">
+        Cerrar
+      </button>
     </dialog>
     <script src="/app.js" defer></script>
   </body>
