@@ -36,13 +36,14 @@ Este documento no contiene credenciales, contraseñas, semillas TOTP ni códigos
 - Después de la confirmación explícita del usuario, ese mismo borrador se envió mediante COM el 31 de julio de 2026. La verificación encontró el mensaje en `Elementos enviados` con `Sent = True`, un destinatario y los 14 ID completos. `last-email.json` impide repetir accidentalmente el mismo conjunto.
 - El lanzador final `INICIAR_AUTOMATIZACION.cmd` está implementado y ejecuta el navegador de forma desatendida con `-Execute`.
 - `.env.mail` persiste destinatarios, copias, asunto y HTML enriquecido. Las listas usan `;` como separador y las imágenes pegadas se incorporan al mensaje como adjuntos inline CID.
+- Al iniciar la interfaz, `.env` y `.env.mail` se crean automáticamente si faltan. La creación usa exclusividad de archivo y nunca sobrescribe una configuración existente.
 - La interfaz web local permite guardar `BI_USERNAME`, `BI_PASSWORD` y `BI_TOTP_SECRET` en `.env` y prueba inmediatamente el inicio de sesión sin crear solicitudes.
 - La interfaz solo escucha en `127.0.0.1`, valida Host y Origin, bloquea scripts y conexiones externas mediante CSP, permite estilos inline necesarios para el editor enriquecido, no precarga secretos y bloquea comprobaciones simultáneas.
 - La portada conserva el encabezado y muestra cinco controles centrados: credenciales, solicitud, envío de correo, toggle de resultado e inicio de automatización. Solo el botón de credenciales cambia a `Editar credenciales`, basándose exclusivamente en las tres variables `BI_*`.
 - En modo edición, cada campo vacío conserva el valor ya guardado. La prueba de login clasifica los fallos según ocurran antes del desafío TOTP, durante el desafío o después de la confirmación.
 - La configuración de solicitud persiste fecha, hora, duración total y razón en `.env`; sus valores no secretos sí regresan al formulario para poder editarlos.
-- La configuración de correo vuelve a cargar sus valores, conserva formato HTML seguro y sustituye los IDs y la razón con los datos de la ejecución actual.
-- La suite actual contiene 59 pruebas aprobadas.
+- El editor de correo comienza vacío. Después del primer guardado vuelve a cargar únicamente el HTML configurado por el usuario, conserva formato seguro y sustituye los IDs y la razón con los datos de la ejecución actual.
+- La suite actual contiene 62 pruebas aprobadas.
 
 ## Parámetros de negocio
 
@@ -69,6 +70,7 @@ La zona horaria del contexto del navegador y del cálculo de la fecha es `Americ
 
 - `src/session.mjs`: crea el navegador, aplica las restricciones de red e inicia sesión.
 - `src/env-config.mjs`: interpreta, valida y guarda las credenciales de `.env` sin dependencias adicionales.
+- `src/configuration-bootstrap.mjs`: define los valores iniciales y coordina la creación no destructiva de `.env` y `.env.mail`.
 - `src/request-settings.mjs`: valida y persiste fecha, hora, duración y razón; limita la sesión a 1–8 horas.
 - `src/final-action.mjs`: valida y persiste la acción final segura en `.env`.
 - `src/automation-result.mjs`: valida el último resultado y expone exclusivamente 14 IDs cuando la acción final fue web.
@@ -107,7 +109,7 @@ La zona horaria del contexto del navegador y del cálculo de la fecha es `Americ
 
 ### Lanzador de interfaz
 
-- `INICIAR_INTERFAZ.cmd`: inicia el servidor en `http://127.0.0.1:4317` y abre automáticamente el navegador predeterminado mediante Windows Explorer. Las rutas `/credenciales`, `/solicitud` y `/correo` gestionan sus respectivas configuraciones. El botón para iniciar la automatización está deshabilitado hasta la siguiente etapa.
+- `INICIAR_INTERFAZ.cmd`: crea los archivos de configuración que falten, inicia el servidor en `http://127.0.0.1:4317` y abre automáticamente el navegador predeterminado mediante Windows Explorer. Las rutas `/credenciales`, `/solicitud` y `/correo` gestionan sus respectivas configuraciones. El botón para iniciar la automatización está deshabilitado hasta la siguiente etapa.
 
 ### Lanzador final
 
@@ -118,7 +120,7 @@ La resolución explícita del runtime es necesaria porque este equipo también t
 ### Estado y resultados
 
 - `.env`: contiene las credenciales `BI_*` como texto legible y los parámetros no secretos `PAM_START_DATE`, `PAM_START_TIME`, `PAM_SESSION_HOURS`, `PAM_REQUEST_REASON` y `PAM_FINAL_ACTION`. Es local y está excluido de Git.
-- `.env.mail`: contiene destinatarios, copias, asunto y HTML enriquecido; es local y está excluido de Git.
+- `.env.mail`: contiene destinatarios, copias, asunto y HTML enriquecido; al crearse, `PAM_MAIL_CONTENT_HTML` queda vacío hasta el primer guardado del usuario. Es local y está excluido de Git.
 - `.env.example`: documenta el formato con valores ficticios y sí puede versionarse.
 - `run-results/last-run.json`: resultado estructurado de la última ejecución real y fuente de `/api/automation-result`; el endpoint solo devuelve un resultado web con exactamente 14 IDs válidos.
 - `run-results/CORREO_ACCESOS_PAM.md`: cuerpo del correo generado con los 14 ID de la última ejecución correcta.
@@ -132,6 +134,8 @@ La resolución explícita del runtime es necesaria porque este equipo también t
 - `test/`: pruebas unitarias ejecutadas por Node.
 
 `.env`, `.env.mail`, `state`, `run-results`, `run-artifacts` y `.playwright-cli` están excluidos mediante `.gitignore`.
+
+`startLocalInterface()` ejecuta primero `initializeLocalConfigurationFiles()`. La creación usa `writeFile(..., { flag: "wx" })`: solo tiene éxito cuando el archivo no existe. `EEXIST` se interpreta como configuración ya presente y el contenido se deja intacto. Cada archivo se evalúa por separado, por lo que puede crearse únicamente el que falte. La carga inicial del formulario no usa `EMAIL_TEMPLATE.html`; el contenido solo se muestra después de haber sido guardado en `.env.mail`.
 
 ## Flujo de autenticación
 

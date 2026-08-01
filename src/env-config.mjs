@@ -89,6 +89,21 @@ async function persistProjectEnvironment(values, envPath) {
   }
 }
 
+export async function createProjectEnvironmentFile(values, options = {}) {
+  const envPath = options.envPath ?? defaultEnvPath;
+  try {
+    await writeFile(envPath, serializeEnv(values), {
+      encoding: "utf8",
+      mode: 0o600,
+      flag: "wx",
+    });
+    return true;
+  } catch (error) {
+    if (error.code === "EEXIST") return false;
+    throw error;
+  }
+}
+
 export function validateCredentials(input) {
   const username = String(input?.username ?? "").trim();
   const password = String(input?.password ?? "");

@@ -1,6 +1,7 @@
-import { readFile } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
 import path from "node:path";
 import {
+  createProjectEnvironmentFile,
   projectDirectory,
   readProjectEnvironment,
   updateProjectEnvironment,
@@ -13,7 +14,6 @@ import {
 
 export const defaultMailEnvPath = path.join(projectDirectory, ".env.mail");
 const legacyMailConfigPath = path.join(projectDirectory, "mail-config.json");
-const defaultTemplatePath = path.join(projectDirectory, "EMAIL_TEMPLATE.html");
 const MAX_CONTENT_LENGTH = 8_000_000;
 const ALLOWED_TAGS = new Set([
   "a", "b", "blockquote", "br", "div", "em", "font", "h1", "h2", "h3", "h4", "h5", "h6",
@@ -141,19 +141,16 @@ export function validateMailSettings(input) {
   };
 }
 
-async function loadDefaults() {
-  const [legacyConfig, template] = await Promise.all([
-    readFile(legacyMailConfigPath, "utf8").then(JSON.parse),
-    readFile(defaultTemplatePath, "utf8"),
-  ]);
+async function loadInitialSettings() {
+  const legacyConfig = await readFile(legacyMailConfigPath, "utf8").then(JSON.parse);
   const to = legacyConfig.recipient ?? "";
   const cc = Array.isArray(legacyConfig.cc) ? legacyConfig.cc.filter(Boolean).join(";") : "";
-  return validateMailSettings({
+  return {
     to,
     cc,
     subject: legacyConfig.subject ?? "ACCESOS AL PAM",
-    contentHtml: template,
-  });
+    contentHtml: "",
+  };
 }
 
 export async function loadMailSettings(options = {}) {
@@ -171,7 +168,28 @@ export async function getMailSettingsState(options = {}) {
   try {
     return { configured: true, settings: await loadMailSettings(options) };
   } catch {
-    return { configured: false, settings: await loadDefaults() };
+    const envPath = options.envPath ?? defaultMailEnvPath;
+    const [initialSettings, values] = await Promise.all([
+      loadInitialSettings(),
+      readProjectEnvironment(envPath),
+    ]);
+    let contentHtml = "";
+    if (String(values.PAM_MAIL_CONTENT_HTML ?? "").trim()) {
+      try {
+        contentHtml = sanitizeEmailHtml(values.PAM_MAIL_CONTENT_HTML);
+      } catch {
+        contentHtml = "";
+      }
+    }
+    return {
+      configured: false,
+      settings: {
+        to: values.PAM_MAIL_TO ?? initialSettings.to,
+        cc: values.PAM_MAIL_CC ?? initialSettings.cc,
+        subject: values.PAM_MAIL_SUBJECT ?? initialSettings.subject,
+        contentHtml,
+      },
+    };
   }
 }
 
@@ -185,4 +203,21 @@ export async function writeMailSettings(input, options = {}) {
     PAM_MAIL_CONTENT_HTML: settings.contentHtml,
   }, { envPath });
   return settings;
+}
+
+export async function ensureMailSettingsFile(options = {}) {
+  const envPath = options.envPath ?? defaultMailEnvPath;
+  try {
+    await access(envPath);
+    return false;
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+  const settings = await loadInitialSettings();
+  return createProjectEnvironmentFile({
+    PAM_MAIL_TO: settings.to,
+    PAM_MAIL_CC: settings.cc,
+    PAM_MAIL_SUBJECT: settings.subject,
+    PAM_MAIL_CONTENT_HTML: settings.contentHtml,
+  }, { envPath });
 }

@@ -49,6 +49,14 @@ test("sirve la interfaz local y no expone credenciales en el estado", async () =
   });
 });
 
+test("entrega vacío el contenido inicial del correo", async () => {
+  await withServer(async ({ baseUrl }) => {
+    const result = await fetch(`${baseUrl}/api/mail-settings`).then((response) => response.json());
+    assert.equal(result.configured, false);
+    assert.equal(result.settings.contentHtml, "");
+  });
+});
+
 test("guarda credenciales y ejecuta la comprobación inyectada", async () => {
   await withServer(async ({ baseUrl }) => {
     const credentials = {
@@ -130,10 +138,13 @@ test("distingue errores de usuario y contraseña de errores del Authenticator", 
 
 test("abre automáticamente la interfaz al iniciar el servidor", async () => {
   const directory = await mkdtemp(path.join(tmpdir(), "pam-ui-open-"));
+  const envPath = path.join(directory, ".env");
+  const mailEnvPath = path.join(directory, ".env.mail");
   let openedUrl;
   const { server, url } = await startLocalInterface({
     port: 0,
-    envPath: path.join(directory, ".env"),
+    envPath,
+    mailEnvPath,
     openBrowser: true,
     browserOpener: async (targetUrl) => {
       openedUrl = targetUrl;

@@ -22,7 +22,7 @@ Abra PowerShell en esta carpeta y ejecute:
 npm install
 ```
 
-Después, haga doble clic en `INICIAR_INTERFAZ.cmd`. Se abrirá una página servida exclusivamente en `http://127.0.0.1:4317`. La terminal que inicia el servidor debe permanecer abierta mientras se usa la interfaz.
+Después, haga doble clic en `INICIAR_INTERFAZ.cmd`. Antes de abrir la página, el servidor crea automáticamente `.env` y `.env.mail` si faltan. `.env` incluye todas las variables esperadas con credenciales, fecha y hora vacías, duración de 8 horas y resultado web seguro; `.env.mail` recibe los destinatarios y el asunto iniciales, pero deja vacío el contenido del correo. Si un archivo ya existe, no se modifica ni se vuelve a crear. La página se sirve exclusivamente en `http://127.0.0.1:4317` y la terminal debe permanecer abierta mientras se usa.
 
 La pantalla inicial contiene cinco controles:
 
@@ -38,11 +38,11 @@ Durante una edición, los campos vacíos conservan su valor actual. Por ejemplo,
 
 El formulario solicita usuario, contraseña y la clave Base32 de enrolamiento de Microsoft Authenticator. Esta clave no es el código temporal de seis dígitos. Al guardar, los tres valores se escriben en `.env` y se realiza inmediatamente una prueba aislada de inicio de sesión. Esta comprobación no crea solicitudes ni envía correos.
 
-`.env` contiene texto legible y está excluido de Git. No debe copiarse a chats, documentación, logs ni commits. `.env.example` documenta los nombres de variables sin valores reales.
+`.env` contiene texto legible y está excluido de Git. No debe copiarse a chats, documentación, logs ni commits. El usuario no necesita crearlo manualmente; únicamente completa sus datos desde la interfaz. `.env.example` documenta los nombres de variables sin valores reales.
 
 La configuración de solicitud se guarda en el mismo archivo con `PAM_START_DATE`, `PAM_START_TIME`, `PAM_SESSION_HOURS` y `PAM_REQUEST_REASON`. La fecha usa `dd/mm` y recibe automáticamente el año vigente de Ecuador al ejecutar. La hora usa `HH:mm`; la duración admite únicamente números enteros de 1 a 8 y se escribe en `Hours`, manteniendo `Days` en cero. Estos valores son usados por el flujo existente cuando están completos; una fecha u hora proporcionada explícitamente por PowerShell continúa teniendo prioridad.
 
-La configuración del correo se guarda por separado en `.env.mail`, también excluido de Git. `Para` y `CC` admiten varias direcciones separadas por punto y coma, por ejemplo `uno@empresa.com;dos@empresa.com`. Al volver a entrar en `/correo` se recuperan los destinatarios, el asunto y el contenido guardado.
+La configuración del correo se guarda por separado en `.env.mail`, también excluido de Git y creado automáticamente. `Para` y `CC` admiten varias direcciones separadas por punto y coma, por ejemplo `uno@empresa.com;dos@empresa.com`. El contenido comienza vacío; después del primer guardado, al volver a entrar en `/correo` se recuperan los destinatarios, el asunto y exclusivamente el contenido configurado por el usuario.
 
 ## Prueba visible
 
@@ -52,7 +52,7 @@ La configuración del correo se guarda por separado en `.env.mail`, también exc
 
 La primera prueba debe mostrar Chrome y terminar en BeyondInsight Password Safe. Cierre la ventana para finalizar el proceso.
 
-Este script y el flujo de solicitudes cargan `BI_USERNAME`, `BI_PASSWORD` y `BI_TOTP_SECRET` desde `.env`. Si el archivo aún no existe, primero debe usarse `INICIAR_INTERFAZ.cmd`.
+Este script y el flujo de solicitudes cargan `BI_USERNAME`, `BI_PASSWORD` y `BI_TOTP_SECRET` desde `.env`. Primero debe usarse `INICIAR_INTERFAZ.cmd` para crear la configuración automáticamente y completar las credenciales.
 
 ## Ejecución desatendida
 
@@ -121,7 +121,7 @@ Este equipo tiene Outlook clásico instalado y el perfil `Outlook` expone exacta
 
 Abra `INICIAR_INTERFAZ.cmd` y seleccione `Configurar envío de correo`. `Para` requiere al menos una dirección; tanto `Para` como `CC` aceptan listas separadas por `;`. Las direcciones se validan, no pueden repetirse y una dirección de `Para` no puede aparecer nuevamente en `CC`.
 
-El campo de contenido admite texto con formato, tablas e imágenes pegadas desde el portapapeles. La política local permite estilos en línea para representar ese formato, pero mantiene bloqueados scripts, objetos, marcos y conexiones externas; además, el servidor sanea el HTML al guardar. Las imágenes se guardan como datos locales y, al preparar el mensaje, se convierten en adjuntos inline con identificadores CID para que Outlook clásico las muestre dentro del cuerpo. `mail-config.json` se conserva únicamente para identificar y validar la cuenta remitente de Outlook.
+El campo de contenido aparece vacío hasta que el usuario escriba y guarde su propio mensaje. Admite texto con formato, tablas e imágenes pegadas desde el portapapeles. La política local permite estilos en línea para representar ese formato, pero mantiene bloqueados scripts, objetos, marcos y conexiones externas; además, el servidor sanea el HTML al guardar. Las imágenes se guardan como datos locales y, al preparar el mensaje, se convierten en adjuntos inline con identificadores CID para que Outlook clásico las muestre dentro del cuerpo. `mail-config.json` se conserva únicamente para identificar y validar la cuenta remitente de Outlook.
 
 Use el botón `Insertar {{REQUEST_IDS}}` para colocar el marcador en la posición actual del cursor. El formulario rechaza contenido sin marcador o con más de uno. Las configuraciones anteriores que tenían IDs escritos en la celda `Solicitudes de PAM` se migran al marcador al cargarlas.
 

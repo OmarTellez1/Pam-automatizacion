@@ -158,6 +158,23 @@ Durante el desarrollo, un agente nunca debe ejecutar `INICIAR_AUTOMATIZACION.cmd
 - La interfaz local debe permanecer abierta durante la automatización para que el diálogo aparezca automáticamente.
 - La suite completa aprobó 59 pruebas. La prueba visible confirmó el diálogo automático, los 14 IDs, la copia al portapapeles y cero errores de consola.
 
+### 13. Creación automática de archivos de configuración
+
+- `INICIAR_INTERFAZ.cmd` ya no presupone que el usuario haya creado `.env` o `.env.mail`.
+- Antes de escuchar en localhost, `configuration-bootstrap.mjs` crea cualquier archivo faltante con todas sus variables esperadas.
+- `.env` inicia con credenciales, fecha y hora vacías; conserva duración de 8 horas, razón predeterminada y `PAM_FINAL_ACTION=web`.
+- `.env.mail` inicia con destinatarios y asunto predeterminados, pero con `PAM_MAIL_CONTENT_HTML` vacío.
+- La creación utiliza el modo exclusivo `wx`. Si el archivo ya existe, no se abre para escritura, no se completa ni se sobrescribe.
+- Los dos archivos son independientes: si uno existe y el otro falta, solo se crea el faltante.
+- La suite completa aprobó 61 pruebas, incluidas creación inicial y preservación byte por byte de archivos existentes.
+
+### 14. Contenido inicial del correo vacío
+
+- Se eliminó la carga automática de `EMAIL_TEMPLATE.html` en el editor de correo.
+- En una instalación nueva, el contenido comienza vacío. `{{REQUEST_IDS}}` continúa siendo obligatorio exactamente una vez al guardar una configuración.
+- Después del primer guardado, el formulario recupera exclusivamente el HTML saneado que configuró el usuario.
+- La suite completa aprobó 62 pruebas. Una validación visible en Chrome confirmó el estado inicial vacío, el guardado, la recarga del contenido y cero errores de consola.
+
 ### 7. Migración y Git
 
 - El proyecto se copió íntegramente desde el directorio generado por Codex a `C:\pam automatizacion`.

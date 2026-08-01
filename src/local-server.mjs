@@ -28,6 +28,7 @@ import {
   defaultAutomationResultPath,
   getLatestAutomationResult,
 } from "./automation-result.mjs";
+import { initializeLocalConfigurationFiles } from "./configuration-bootstrap.mjs";
 
 const HOST = "127.0.0.1";
 const DEFAULT_PORT = 4317;
@@ -358,7 +359,10 @@ const isEntryPoint = process.argv[1] &&
 export async function startLocalInterface(options = {}) {
   const host = options.host ?? HOST;
   const port = options.port ?? DEFAULT_PORT;
-  const server = createLocalServer(options);
+  const envPath = options.envPath ?? defaultEnvPath;
+  const mailEnvPath = options.mailEnvPath ?? defaultMailEnvPath;
+  await initializeLocalConfigurationFiles({ envPath, mailEnvPath });
+  const server = createLocalServer({ ...options, envPath, mailEnvPath });
   await new Promise((resolve, reject) => {
     server.once("error", reject);
     server.listen(port, host, resolve);
