@@ -21,6 +21,15 @@ import {
   writeMailSettings,
 } from "./mail-settings.mjs";
 import {
+  getOutlookSettingsState,
+  loadOutlookSender,
+  writeOutlookSender,
+} from "./outlook-settings.mjs";
+import {
+  sendOutlookTestEmail,
+  verifyOutlookAccount,
+} from "./outlook-classic.mjs";
+import {
   getFinalActionState,
   writeFinalAction,
 } from "./final-action.mjs";
@@ -139,13 +148,17 @@ export function createLocalServer(options = {}) {
   const mailEnvPath = options.mailEnvPath ?? defaultMailEnvPath;
   const automationResultPath = options.automationResultPath ?? defaultAutomationResultPath;
   const authenticate = options.authenticate ?? verifyLogin;
+  const verifyOutlook = options.verifyOutlook ?? verifyOutlookAccount;
+  const sendOutlookTest = options.sendOutlookTest ?? sendOutlookTestEmail;
   const now = options.now ?? (() => new Date());
   const automationController = options.automationController ?? createAutomationController({
     envPath,
     mailEnvPath,
     runner: options.automationRunner,
+    outlookVerifier: verifyOutlook,
   });
   let credentialTestInProgress = false;
+  let outlookOperationInProgress = false;
   let requestSettingsWriteInProgress = false;
   let mailSettingsWriteInProgress = false;
   let finalActionWriteInProgress = false;
@@ -161,6 +174,11 @@ export function createLocalServer(options = {}) {
 
       if (request.method === "GET" && url.pathname === "/api/credentials/status") {
         sendJson(response, 200, { configured: await credentialsAreConfigured(envPath) });
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/outlook/status") {
+        sendJson(response, 200, await getOutlookSettingsState({ envPath: mailEnvPath }));
         return;
       }
 
@@ -248,6 +266,62 @@ export function createLocalServer(options = {}) {
         return;
       }
 
+      if (request.method === "POST" && url.pathname === "/api/outlook") {
+        if (!requestIsSameOrigin(request)) {
+          sendJson(response, 403, { message: "Origen de solicitud no permitido." });
+          return;
+        }
+        if (!String(request.headers["content-type"] ?? "").startsWith("application/json")) {
+          sendJson(response, 415, { message: "El contenido debe enviarse como JSON." });
+          return;
+        }
+        if (outlookOperationInProgress) {
+          sendJson(response, 409, { message: "Ya hay una comprobación de Outlook en curso." });
+          return;
+        }
+
+        outlookOperationInProgress = true;
+        try {
+          const input = await readJsonBody(request);
+          await verifyOutlook(input.sender);
+          const sender = await writeOutlookSender(input.sender, { envPath: mailEnvPath });
+          sendJson(response, 200, {
+            configured: true,
+            verified: true,
+            sender,
+            message: "Outlook clásico y la cuenta configurada se comprobaron correctamente. No se envió ningún correo.",
+          });
+        } finally {
+          outlookOperationInProgress = false;
+        }
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/outlook/test-email") {
+        if (!requestIsSameOrigin(request)) {
+          sendJson(response, 403, { message: "Origen de solicitud no permitido." });
+          return;
+        }
+        if (outlookOperationInProgress) {
+          sendJson(response, 409, { message: "Ya hay una operación de Outlook en curso." });
+          return;
+        }
+
+        outlookOperationInProgress = true;
+        try {
+          const sender = await loadOutlookSender({ envPath: mailEnvPath });
+          await sendOutlookTest(sender);
+          sendJson(response, 200, {
+            sent: true,
+            sender,
+            message: `Outlook aceptó el correo de prueba enviado a ${sender}.`,
+          });
+        } finally {
+          outlookOperationInProgress = false;
+        }
+        return;
+      }
+
       if (request.method === "POST" && url.pathname === "/api/request-settings") {
         if (!requestIsSameOrigin(request)) {
           sendJson(response, 403, { message: "Origen de solicitud no permitido." });
@@ -328,6 +402,16 @@ export function createLocalServer(options = {}) {
         finalActionWriteInProgress = true;
         try {
           const input = await readJsonBody(request);
+          if (String(input.action).trim().toLowerCase() === "email") {
+            const outlookState = await getOutlookSettingsState({ envPath: mailEnvPath });
+            if (!outlookState.configured) {
+              const error = new Error(
+                "No puede activar el envío por Outlook porque todavía no ha configurado y verificado su cuenta.",
+              );
+              error.statusCode = 409;
+              throw error;
+            }
+          }
           const action = await writeFinalAction(input.action, { envPath });
           sendJson(response, 200, {
             action,

@@ -11,6 +11,8 @@ import {
 } from "./env-config.mjs";
 import { getFinalActionState } from "./final-action.mjs";
 import { defaultMailEnvPath, getMailSettingsState } from "./mail-settings.mjs";
+import { verifyOutlookAccount } from "./outlook-classic.mjs";
+import { getOutlookSettingsState } from "./outlook-settings.mjs";
 import {
   parseDayMonthForEcuador,
   validateRequestStartNotPast,
@@ -88,6 +90,7 @@ export function createAutomationController(options = {}) {
   const envPath = options.envPath ?? defaultEnvPath;
   const mailEnvPath = options.mailEnvPath ?? defaultMailEnvPath;
   const runner = options.runner ?? runPowerShellAutomation;
+  const outlookVerifier = options.outlookVerifier ?? verifyOutlookAccount;
   const now = options.now ?? (() => new Date());
   const resultLoader = options.resultLoader ?? (async () =>
     JSON.parse(await readFile(options.resultPath ?? automationResultPath, "utf8"))
@@ -139,8 +142,21 @@ export function createAutomationController(options = {}) {
         throw statusError(error.message);
       }
       const finalAction = await getFinalActionState({ envPath });
-      if (finalAction.sendEmail && !(await getMailSettingsState({ envPath: mailEnvPath })).configured) {
-        throw statusError("Configure primero el envío de correo o seleccione el resultado web.");
+      if (finalAction.sendEmail) {
+        const outlookState = await getOutlookSettingsState({ envPath: mailEnvPath });
+        if (!outlookState.configured) {
+          throw statusError(
+            "Configure y verifique primero su cuenta de Outlook o seleccione el resultado web.",
+          );
+        }
+        if (!(await getMailSettingsState({ envPath: mailEnvPath })).configured) {
+          throw statusError("Configure primero el envío de correo o seleccione el resultado web.");
+        }
+        try {
+          await outlookVerifier(outlookState.sender);
+        } catch (error) {
+          throw statusError(`No fue posible verificar Outlook clásico: ${error.message}`);
+        }
       }
 
       const startedAt = new Date().toISOString();

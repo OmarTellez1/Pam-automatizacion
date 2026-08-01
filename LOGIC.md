@@ -30,7 +30,7 @@ Este documento no contiene credenciales, contraseñas, semillas TOTP ni códigos
 - Las pruebas unitarias actuales cubren validación y conversión de fechas y horas, normalización de aplicaciones y generación TOTP.
 - Después de obtener un ID único por cuenta favorita, el flujo genera el HTML definitivo usando exclusivamente el contenido guardado en la interfaz.
 - Los ID `140131` a `140144` pertenecen únicamente a la ejecución de prueba del 1 de agosto de 2026. No están incorporados como constantes del correo.
-- Outlook clásico se controla mediante COM. Cada instalación selecciona la cuenta iniciada cuyo `SmtpAddress` coincide con `PAM_MAIL_SENDER`.
+- Outlook clásico se controla mediante COM. Cada instalación selecciona la cuenta iniciada cuyo `SmtpAddress` coincide con `PAM_MAIL_SENDER`. La cuenta es opcional mientras la acción final sea web; su guardado exige una prueba COM sin envío y la automatización vuelve a verificarla antes de abrir PAM.
 - La primera prueba COM creó y mostró un borrador guardado con los 14 ID; la verificación posterior confirmó `Sent = False` y cero ID ausentes.
 - Después de la confirmación explícita del usuario, ese mismo borrador se envió mediante COM el 31 de julio de 2026. La verificación encontró el mensaje en `Elementos enviados` con `Sent = True`, un destinatario y los 14 ID completos. `last-email.json` impide repetir accidentalmente el mismo conjunto.
 - El lanzador final `INICIAR_AUTOMATIZACION.cmd` está implementado y ejecuta el navegador de forma desatendida con `-Execute`.
@@ -41,9 +41,10 @@ Este documento no contiene credenciales, contraseñas, semillas TOTP ni códigos
 - La portada conserva el encabezado y muestra controles centrados para credenciales, solicitud, envío de correo, resultado final y ejecución. `Iniciar prueba` solo aparece con `BOTON_PRUEBA=TRUE`; `Iniciar automatización` siempre corresponde al modo real y exige confirmación. Durante cualquier ejecución todos esos controles se bloquean; se restauran al recibir un estado `completed` o `failed`. Si la acción final envió correo, el estado completado abre un diálogo de confirmación una sola vez. Un rechazo previo al inicio, incluida una fecha u hora pasada, abre un diálogo persistente; el sondeo de estado no borra el error mientras el usuario no cierre el cuadro o vaya a editar la solicitud.
 - En modo edición, cada campo vacío conserva el valor ya guardado. La prueba de login clasifica los fallos según ocurran antes del desafío TOTP, durante el desafío o después de la confirmación.
 - La configuración de solicitud muestra hora `hh:mm` con un selector `AM/PM`, la convierte de forma validada y persiste `PAM_START_TIME` como `HH:mm` de 24 horas para el portal. Sus valores no secretos regresan al formulario para poder editarlos. Al abrir esa pantalla, el servidor compara solamente la fecha con el día actual de Ecuador: si ya pasó, actualiza y persiste `PAM_START_DATE` con hoy sin modificar hora, duración ni razón.
-- El remitente, `Para`, `CC` y el editor de correo comienzan vacíos. Después del primer guardado vuelven a cargar únicamente los valores configurados por el usuario; el HTML conserva formato seguro y sustituye los IDs y la razón con los datos de la ejecución actual.
+- El remitente, `Para`, `CC` y el editor de correo comienzan vacíos. El remitente se administra en el panel Outlook de `/credenciales`; los demás campos se administran en `/correo`. Después del primer guardado vuelven a cargar únicamente los valores configurados por el usuario; el HTML conserva formato seguro y sustituye los IDs y la razón con los datos de la ejecución actual.
 - La configuración de correo avisa que el envío requiere Outlook clásico instalado y una sesión iniciada; el nuevo Outlook no es compatible con COM.
-- La suite actual contiene 58 pruebas aprobadas.
+- La cuenta de Outlook dispone de una prueba explícita de envío a sí misma. Activar el resultado por correo sin una cuenta configurada abre un diálogo y, al cerrarlo, restaura `PAM_FINAL_ACTION=web`.
+- La suite actual contiene 83 pruebas aprobadas.
 
 ## Parámetros de negocio
 
@@ -76,6 +77,8 @@ La zona horaria del contexto del navegador y del cálculo de la fecha es `Americ
 - `src/final-action.mjs`: valida y persiste la acción final segura en `.env`.
 - `src/automation-result.mjs`: valida el último resultado y expone todos los IDs cuando la acción final fue web. El frontend toma el resultado existente durante el arranque como línea base sin mostrarlo; solo abre el diálogo cuando posteriormente cambia `resultId`.
 - `src/mail-settings.mjs`: valida listas de destinatarios, sanitiza HTML y persiste la configuración en `.env.mail`.
+- `src/outlook-settings.mjs`: valida y persiste únicamente el remitente opcional de Outlook en `.env.mail`.
+- `src/outlook-classic.mjs`: ejecuta la comprobación COM o el envío de prueba sin mezclar esa integración con las rutas HTTP.
 - `src/local-server.mjs`: sirve la interfaz en loopback, expone solo el estado de configuración y coordina el guardado con la prueba de login.
 - `web/`: HTML, CSS y JavaScript de la interfaz local; no contiene reglas de autenticación ni secretos.
 - `src/login.mjs`: ejecutable sencillo para comprobar solamente el inicio de sesión.
@@ -93,6 +96,7 @@ La zona horaria del contexto del navegador y del cálculo de la fecha es `Americ
 - `scripts/run-login.ps1`: descifra temporalmente los secretos para el proceso y ejecuta `src/login.mjs`.
 - `scripts/run-access-requests.ps1`: ejecuta `src/request-access.mjs`; acepta fecha, hora, modo visible y autorización para crear solicitudes. Tras una ejecución real, envía por Outlook clásico o abre los IDs según `PAM_FINAL_ACTION`. `-Email S|N` permanece como sobrescritura técnica opcional.
 - `scripts/run-outlook-classic.ps1`: crea un mensaje nuevo mediante COM; por defecto lo guarda como borrador, `-Display` lo muestra y `-Send` lo envía. Nunca reutiliza un borrador anterior. Antes de enviar valida el hash del HTML, la sustitución del marcador, la presencia de todos los IDs y la lista fija completa cuando `testMode` es verdadero.
+- `scripts/check-outlook-classic.ps1`: comprueba Outlook clásico y la cuenta configurada creando y descartando un mensaje temporal; con `-SendTest` envía, previa confirmación de la interfaz, un correo a la misma cuenta.
 
 ### Lanzador de prueba
 
@@ -100,7 +104,7 @@ La zona horaria del contexto del navegador y del cálculo de la fecha es `Americ
 
 ### Lanzador de interfaz
 
-- `INICIAR_INTERFAZ.cmd`: crea los archivos de configuración que falten, inicia el servidor en `http://127.0.0.1:4317` y abre automáticamente el navegador predeterminado. Las rutas `/credenciales`, `/solicitud` y `/correo` gestionan sus respectivas configuraciones; `/api/automation/start` inicia un solo proceso de prueba o real y `/api/automation/status` expone su estado sin incluir secretos.
+- `INICIAR_INTERFAZ.cmd`: crea los archivos de configuración que falten, inicia el servidor en `http://127.0.0.1:4317` y abre automáticamente el navegador predeterminado. `/credenciales` separa PAM y Outlook en paneles con pruebas independientes; `/solicitud` y `/correo` gestionan sus respectivas configuraciones. `/api/automation/start` inicia un solo proceso de prueba o real y `/api/automation/status` expone su estado sin incluir secretos.
 
 ### Lanzador final
 
@@ -255,9 +259,11 @@ Los selectores están basados en roles, etiquetas y atributos de la interfaz. Si
 
 ## Gestión y rotación de credenciales
 
-Para cambiar el usuario, la contraseña o la semilla alfanumérica TOTP, abra `INICIAR_INTERFAZ.cmd`, seleccione `Configurar credenciales del PAM` y guarde los tres datos. La semilla TOTP es la clave Base32 de enrolamiento, no un código temporal de seis dígitos.
+Para cambiar el usuario, la contraseña o la semilla alfanumérica TOTP, abra `INICIAR_INTERFAZ.cmd`, seleccione `Configurar credenciales` y use el panel izquierdo. La semilla TOTP es la clave Base32 de enrolamiento, no un código temporal de seis dígitos. El panel derecho administra de forma opcional el correo remitente de Outlook; no solicita ni almacena una contraseña, porque usa el perfil ya iniciado de Outlook clásico.
 
 El servidor conserva cualquier otra variable ya existente en `.env`, actualiza las credenciales proporcionadas y mantiene las anteriores para los campos vacíos. Después prueba el login en una sesión de navegador aislada. Si la prueba falla, los datos permanecen guardados para que el estado sea explícito, pero la interfaz informa que no fueron verificados. Un fallo antes de mostrar `Enter Response` se presenta como problema de usuario o contraseña; un fallo posterior se presenta como problema de la clave o código del Authenticator; los fallos anteriores al formulario se presentan como conexión o portal.
+
+Outlook sigue una regla distinta: primero abre Outlook clásico, localiza exactamente una cuenta por `SmtpAddress`, crea un mensaje temporal con `SendUsingAccount` y lo descarta. Solo después persiste `PAM_MAIL_SENDER`. El botón de correo de prueba envía a esa misma dirección tras una confirmación visible. Una automatización con acción `email` repite la verificación antes de iniciar el proceso PowerShell; si falla, PAM no se abre.
 
 El servidor escucha exclusivamente en IPv4 loopback, rechaza Host u Origin externos y limita el tamaño de las solicitudes. Nunca expone las credenciales; el endpoint de solicitud devuelve únicamente fecha, hora, duración y razón para permitir su edición. Como `.env` es texto legible, la seguridad depende de los permisos de acceso a la carpeta del proyecto.
 

@@ -269,6 +269,19 @@ a { color: inherit; }
   padding: 48px 0;
 }
 
+.credentials-page-content { width: min(100%, 1040px); }
+.credentials-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: 22px;
+}
+.credential-panel h2 { margin: 0 0 22px; font-size: 1.15rem; }
+.credential-panel .configured-message { margin-bottom: 20px; }
+.outlook-panel .outlook-notice { margin-bottom: 20px; }
+.outlook-test-button { width: 100%; min-width: 0; margin-top: 12px; justify-content: center; }
+.outlook-test-help { text-align: center; }
+
 .mail-content {
   width: min(100%, 820px);
   margin: auto;
@@ -382,6 +395,10 @@ a { color: inherit; }
   .result-ids { grid-template-columns: 1fr; max-height: 260px; overflow: auto; }
   .date-selection { grid-template-columns: 92px minmax(0, 1fr); }
   .time-selection { grid-template-columns: minmax(0, 1fr) 92px; }
+}
+
+@media (max-width: 860px) {
+  .credentials-grid { grid-template-columns: 1fr; }
 }
 
 @media (prefers-reduced-motion: reduce) {

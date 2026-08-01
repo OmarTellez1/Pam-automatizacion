@@ -24,7 +24,7 @@
         <h1 id="page-title" class="visually-hidden">Acciones de Accesos PAM</h1>
         <div class="actions" aria-label="Acciones disponibles">
           <a class="button button-primary" href="/credenciales">
-            <span id="credentials-action-label">Configurar credenciales del PAM</span>
+            <span id="credentials-action-label">Configurar credenciales</span>
             <span aria-hidden="true">→</span>
           </a>
           <a class="button button-neutral" href="/solicitud">
@@ -112,6 +112,24 @@
       <div class="result-dialog-actions">
         <a class="button button-primary result-button" href="/solicitud">Editar solicitud</a>
         <button id="dismiss-automation-error" class="button button-neutral result-button" type="button">
+          Cerrar
+        </button>
+      </div>
+    </dialog>
+
+    <dialog id="outlook-required-dialog" class="result-dialog error-dialog"
+      aria-labelledby="outlook-required-title" aria-describedby="outlook-required-description">
+      <span class="error-dialog-icon" aria-hidden="true">!</span>
+      <span class="result-kicker error-kicker">Outlook no configurado</span>
+      <h2 id="outlook-required-title">No puede activar el envío por Outlook</h2>
+      <p id="outlook-required-description" class="result-description">
+        Primero debe configurar y verificar su cuenta de Outlook clásico desde la sección
+        Credenciales. Mientras tanto, los IDs se mostrarán en esta interfaz al finalizar.
+      </p>
+      <div class="result-dialog-actions">
+        <a id="configure-outlook-link" class="button button-primary result-button"
+          href="/credenciales">Configurar Outlook</a>
+        <button id="dismiss-outlook-required" class="button button-neutral result-button" type="button">
           Cerrar
         </button>
       </div>

@@ -104,6 +104,13 @@ async function loadSettings() {
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!form.reportValidity()) return;
+  if (!form.elements.sender.value) {
+    showResult(
+      "error",
+      "Configure y verifique primero su cuenta de Outlook desde la sección Credenciales.",
+    );
+    return;
+  }
   if (!editor.textContent.trim() && !editor.querySelector("img")) {
     showResult("error", "El contenido del correo es obligatorio.");
     editor.focus();

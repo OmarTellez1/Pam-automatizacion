@@ -15,6 +15,8 @@ async function withServer(callback, options = {}) {
   const mailEnvPath = path.join(directory, ".env.mail");
   const automationResultPath = path.join(directory, "last-run.json");
   const testedCredentials = [];
+  const verifiedOutlookAccounts = [];
+  const outlookTestRecipients = [];
   const automationStarts = [];
   const server = createLocalServer({
     envPath,
@@ -24,6 +26,12 @@ async function withServer(callback, options = {}) {
     authenticate: async (credentials) => {
       testedCredentials.push(credentials);
     },
+    verifyOutlook: options.verifyOutlook ?? (async (sender) => {
+      verifiedOutlookAccounts.push(sender);
+    }),
+    sendOutlookTest: options.sendOutlookTest ?? (async (sender) => {
+      outlookTestRecipients.push(sender);
+    }),
     automationController: {
       getStatus: async () => ({
         state: "idle",
@@ -48,6 +56,8 @@ async function withServer(callback, options = {}) {
     await callback({
       baseUrl: `http://127.0.0.1:${port}`,
       testedCredentials,
+      verifiedOutlookAccounts,
+      outlookTestRecipients,
       automationResultPath,
       automationStarts,
     });
@@ -62,7 +72,7 @@ test("sirve la interfaz local y no expone credenciales en el estado", async () =
   await withServer(async ({ baseUrl }) => {
     const page = await fetch(`${baseUrl}/`);
     assert.equal(page.status, 200);
-    assert.match(await page.text(), /Configurar credenciales del PAM/);
+    assert.match(await page.text(), /Configurar credenciales/);
 
     const status = await fetch(`${baseUrl}/api/credentials/status`);
     assert.deepEqual(await status.json(), { configured: false });
@@ -121,6 +131,56 @@ test("guarda credenciales y ejecuta la comprobación inyectada", async () => {
     });
     const status = await fetch(`${baseUrl}/api/credentials/status`);
     assert.deepEqual(await status.json(), { configured: true });
+  });
+});
+
+test("verifica y guarda la cuenta de Outlook antes de habilitar el correo de prueba", async () => {
+  await withServer(async ({
+    baseUrl,
+    verifiedOutlookAccounts,
+    outlookTestRecipients,
+  }) => {
+    const headers = { "Content-Type": "application/json", Origin: baseUrl };
+    const initial = await fetch(`${baseUrl}/api/outlook/status`).then((result) => result.json());
+    assert.deepEqual(initial, { configured: false, sender: "" });
+
+    const savedResponse = await fetch(`${baseUrl}/api/outlook`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ sender: "usuario@example.com" }),
+    });
+    assert.equal(savedResponse.status, 200);
+    const saved = await savedResponse.json();
+    assert.equal(saved.configured, true);
+    assert.equal(saved.verified, true);
+    assert.equal(saved.sender, "usuario@example.com");
+    assert.deepEqual(verifiedOutlookAccounts, ["usuario@example.com"]);
+
+    const testResponse = await fetch(`${baseUrl}/api/outlook/test-email`, {
+      method: "POST",
+      headers: { Origin: baseUrl },
+    });
+    assert.equal(testResponse.status, 200);
+    assert.equal((await testResponse.json()).sent, true);
+    assert.deepEqual(outlookTestRecipients, ["usuario@example.com"]);
+  });
+});
+
+test("no guarda Outlook cuando la cuenta no supera la verificación", async () => {
+  await withServer(async ({ baseUrl }) => {
+    const response = await fetch(`${baseUrl}/api/outlook`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Origin: baseUrl },
+      body: JSON.stringify({ sender: "usuario@example.com" }),
+    });
+    assert.equal(response.status, 400);
+    assert.match((await response.json()).message, /no está iniciada/);
+    assert.deepEqual(
+      await fetch(`${baseUrl}/api/outlook/status`).then((result) => result.json()),
+      { configured: false, sender: "" },
+    );
+  }, {
+    verifyOutlook: async () => { throw new Error("La cuenta no está iniciada."); },
   });
 });
 
@@ -301,6 +361,19 @@ test("guarda y alterna la acción final de la automatización", async () => {
     const initial = await fetch(`${baseUrl}/api/final-action`).then((result) => result.json());
     assert.deepEqual(initial, { action: "web", sendEmail: false });
 
+    const blockedResponse = await fetch(`${baseUrl}/api/final-action`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Origin: baseUrl },
+      body: JSON.stringify({ action: "email" }),
+    });
+    assert.equal(blockedResponse.status, 409);
+    assert.match((await blockedResponse.json()).message, /Outlook/);
+
+    await fetch(`${baseUrl}/api/outlook`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Origin: baseUrl },
+      body: JSON.stringify({ sender: "usuario@example.com" }),
+    });
     const response = await fetch(`${baseUrl}/api/final-action`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Origin: baseUrl },

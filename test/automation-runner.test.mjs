@@ -80,6 +80,7 @@ test("impide dos automatizaciones simultáneas y conserva el modo solicitado", a
   const controller = createAutomationController({
     ...paths,
     runner: async () => running,
+    outlookVerifier: async () => {},
     resultLoader: async () => ({ sendEmail: true, conflicts: [] }),
   });
 
@@ -117,6 +118,7 @@ test("informa el bloqueo temporal y confirma el correo al completar", async () =
   const controller = createAutomationController({
     ...paths,
     runner: async () => running,
+    outlookVerifier: async () => {},
     resultLoader: async () => ({ sendEmail: true, conflicts: [] }),
   });
 
@@ -146,6 +148,7 @@ test("no confirma correo cuando todos los accesos terminaron en conflicto", asyn
   const controller = createAutomationController({
     ...paths,
     runner: async () => {},
+    outlookVerifier: async () => {},
     resultLoader: async () => ({ sendEmail: false, conflicts: [conflict] }),
   });
 
@@ -156,4 +159,23 @@ test("no confirma correo cuando todos los accesos terminaron en conflicto", asyn
   assert.equal(completed.emailSent, false);
   assert.deepEqual(completed.conflicts, [conflict]);
   assert.match(completed.message, /No se envió correo/);
+});
+
+test("verifica Outlook antes de iniciar una automatización con correo", async () => {
+  const paths = await createConfiguredEnvironment("TRUE");
+  await configureEmailFinalAction(paths);
+  let runnerCalled = false;
+  const controller = createAutomationController({
+    ...paths,
+    outlookVerifier: async () => {
+      throw new Error("La cuenta no está iniciada.");
+    },
+    runner: async () => { runnerCalled = true; },
+  });
+
+  await assert.rejects(
+    () => controller.start("real"),
+    /No fue posible verificar Outlook clásico.*cuenta no está iniciada/,
+  );
+  assert.equal(runnerCalled, false);
 });

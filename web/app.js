@@ -29,6 +29,10 @@ const automationErrorDialog = document.querySelector("#automation-error-dialog")
 const automationErrorTitle = document.querySelector("#automation-error-title");
 const automationErrorDescription = document.querySelector("#automation-error-description");
 const dismissAutomationErrorButton = document.querySelector("#dismiss-automation-error");
+const outlookRequiredDialog = document.querySelector("#outlook-required-dialog");
+const outlookRequiredDescription = document.querySelector("#outlook-required-description");
+const dismissOutlookRequiredButton = document.querySelector("#dismiss-outlook-required");
+const configureOutlookLink = document.querySelector("#configure-outlook-link");
 let latestRequestIds = [];
 let presentedResultId;
 let automationResultMonitorInitialized = false;
@@ -37,6 +41,7 @@ let presentedEmailCompletionId;
 let automationRunning = false;
 let automationStartPending = false;
 let automationStartErrorActive = false;
+let outlookResetRequired = false;
 
 function setAutomationControlsLocked(locked) {
   automationRunning = locked;
@@ -81,8 +86,8 @@ Promise.all([
   updateConfigurationAction({
     url: "/api/credentials/status",
     label: credentialsActionLabel,
-    configureText: "Configurar credenciales del PAM",
-    editText: "Editar credenciales del PAM",
+    configureText: "Configurar credenciales",
+    editText: "Editar credenciales",
   }),
   updateConfigurationAction({
     url: "/api/request-settings",
@@ -103,10 +108,50 @@ async function loadFinalAction() {
     const response = await fetch("/api/final-action", { cache: "no-store" });
     if (!response.ok) throw new Error("final action unavailable");
     const result = await response.json();
+    if (result.action === "email") {
+      const outlookResponse = await fetch("/api/outlook/status", { cache: "no-store" });
+      const outlookState = outlookResponse.ok ? await outlookResponse.json() : { configured: false };
+      if (!outlookState.configured) {
+        await persistFinalAction("web");
+        renderFinalAction("web");
+        return;
+      }
+    }
     renderFinalAction(result.action);
   } catch {
     renderFinalAction("web");
     finalActionStatus.textContent = "No fue posible cargar la acción final; los IDs se mostrarán en la web.";
+  } finally {
+    finalActionToggle.disabled = automationRunning;
+  }
+}
+
+async function persistFinalAction(action) {
+  const response = await fetch("/api/final-action", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action }),
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.message);
+  return result;
+}
+
+function showOutlookRequired(message) {
+  outlookRequiredDescription.textContent = message;
+  outlookResetRequired = true;
+  if (!outlookRequiredDialog.open) outlookRequiredDialog.showModal();
+}
+
+async function restoreWebFinalAction() {
+  outlookResetRequired = false;
+  renderFinalAction("web");
+  try {
+    const result = await persistFinalAction("web");
+    finalActionStatus.textContent = result.message;
+  } catch {
+    finalActionStatus.textContent =
+      "No fue posible guardar el resultado web. Vuelva a intentarlo antes de iniciar.";
   } finally {
     finalActionToggle.disabled = automationRunning;
   }
@@ -118,16 +163,28 @@ finalActionToggle.addEventListener("click", async () => {
   finalActionToggle.disabled = true;
   finalActionStatus.textContent = "Guardando acción final…";
   try {
-    const response = await fetch("/api/final-action", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: nextAction }),
-    });
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.message);
+    if (nextAction === "email") {
+      renderFinalAction("email");
+      const outlookResponse = await fetch("/api/outlook/status", { cache: "no-store" });
+      const outlookState = outlookResponse.ok ? await outlookResponse.json() : { configured: false };
+      if (!outlookState.configured) {
+        showOutlookRequired(
+          "No puede usar el envío por Outlook porque todavía no ha configurado y verificado " +
+          "su cuenta de Outlook clásico. Mientras tanto, los IDs se mostrarán en esta interfaz al finalizar.",
+        );
+        return;
+      }
+    }
+    const result = await persistFinalAction(nextAction);
     renderFinalAction(result.action);
     finalActionStatus.textContent = result.message;
-  } catch {
+  } catch (error) {
+    if (nextAction === "email") {
+      showOutlookRequired(
+        error.message || "No fue posible verificar la configuración de Outlook.",
+      );
+      return;
+    }
     renderFinalAction(previousAction);
     finalActionStatus.textContent = "No fue posible guardar la acción final.";
   } finally {
@@ -323,6 +380,18 @@ resultDialog.addEventListener("click", (event) => {
 dismissEmailSuccessButton.addEventListener("click", () => emailSuccessDialog.close());
 emailSuccessDialog.addEventListener("click", (event) => {
   if (event.target === emailSuccessDialog) emailSuccessDialog.close();
+});
+dismissOutlookRequiredButton.addEventListener("click", () => outlookRequiredDialog.close());
+outlookRequiredDialog.addEventListener("click", (event) => {
+  if (event.target === outlookRequiredDialog) outlookRequiredDialog.close();
+});
+outlookRequiredDialog.addEventListener("close", () => {
+  if (outlookResetRequired) void restoreWebFinalAction();
+});
+configureOutlookLink.addEventListener("click", async (event) => {
+  event.preventDefault();
+  await restoreWebFinalAction();
+  window.location.assign(configureOutlookLink.href);
 });
 dismissAutomationErrorButton.addEventListener("click", () => automationErrorDialog.close());
 automationErrorDialog.addEventListener("click", (event) => {

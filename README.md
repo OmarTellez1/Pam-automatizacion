@@ -12,7 +12,7 @@ Este componente abre exclusivamente `https://10.30.17.117`, introduce el usuario
 - Usuario y contraseña de BeyondInsight.
 - Clave Base32 usada para enrolar el TOTP. **No es uno de los códigos temporales de seis dígitos.** Si no se conserva, un administrador debe restablecer/re-enrolar el TOTP y entregar la clave por un canal aprobado.
 - Autorización del responsable de seguridad para almacenar contraseña y clave TOTP en el mismo equipo.
-- Outlook clásico (la versión antigua) instalado, con la cuenta del usuario iniciada. El nuevo Outlook no ofrece la interfaz COM requerida por este programa.
+- Para usar el resultado por correo: Outlook clásico (la versión antigua) instalado, abierto al menos una vez y con el perfil del usuario iniciado. El nuevo Outlook no ofrece la interfaz COM requerida por este programa. Esta condición es opcional si los IDs se mostrarán en la interfaz.
 
 ## Instalación única
 
@@ -26,14 +26,14 @@ Después, haga doble clic en `INICIAR_INTERFAZ.cmd`. Antes de abrir la página, 
 
 La pantalla inicial contiene los controles de configuración, resultado y ejecución:
 
-- `Configurar credenciales del PAM`: abre el formulario de usuario, contraseña y TOTP.
+- `Configurar credenciales`: abre dos paneles independientes: credenciales PAM a la izquierda y cuenta de Outlook a la derecha.
 - `Configurar solicitud`: permite guardar o editar fecha de inicio, hora de inicio, duración total en horas y razón.
 - `Configurar envío de correo`: permite guardar destinatarios, copias, asunto y contenido enriquecido.
 - Toggle de resultado final: alterna entre `Se mostrarán los IDs en esta interfaz al final` y `Se enviará un correo al final`.
 - `Iniciar prueba`: aparece únicamente cuando `.env` contiene `BOTON_PRUEBA="TRUE"`. Recorre todas las cuentas de `Favorites`, llena cada formulario y lo descarta sin presionar `Submit Request`.
 - `Iniciar automatización`: solicita confirmación explícita y ejecuta el flujo real, que sí presiona `Submit Request`.
 
-Fuera del encabezado, la portada muestra únicamente estos controles centrados y el estado de la ejecución. Cada botón refleja su persistencia: `Editar credenciales del PAM` cuando las tres variables `BI_*` son válidas, `Editar solicitud` cuando sus cuatro parámetros están completos y `Editar envío de correo` cuando remitente, destinatarios, asunto y contenido son válidos. Los formularios de solicitud y correo vuelven a cargar sus valores guardados, pero no muestran avisos de “configuración existente”. El toggle se guarda como `PAM_FINAL_ACTION` en `.env`; si todavía no existe, mostrar los IDs en la web es la opción segura. El servidor bloquea un segundo inicio mientras haya otra automatización en curso.
+Fuera del encabezado, la portada muestra únicamente estos controles centrados y el estado de la ejecución. Cada botón refleja su persistencia: `Editar credenciales` cuando las tres variables `BI_*` son válidas, `Editar solicitud` cuando sus cuatro parámetros están completos y `Editar envío de correo` cuando remitente, destinatarios, asunto y contenido son válidos. Los formularios de solicitud y correo vuelven a cargar sus valores guardados, pero no muestran avisos de “configuración existente”. El toggle se guarda como `PAM_FINAL_ACTION` en `.env`; si todavía no existe, mostrar los IDs en la web es la opción segura. Si se intenta activar correo sin una cuenta de Outlook configurada, aparece un cuadro explicativo y, al cerrarlo, el toggle vuelve a la opción web. El servidor bloquea un segundo inicio mientras haya otra automatización en curso.
 
 Durante una edición de credenciales, los campos vacíos conservan su valor actual. Por ejemplo, se puede escribir únicamente una contraseña nueva y dejar vacíos el usuario y la clave del Authenticator. Después de guardar, la comprobación distingue entre un rechazo inicial de usuario/contraseña, un rechazo posterior del código TOTP y un fallo de conexión o del portal.
 
@@ -43,7 +43,7 @@ El formulario solicita usuario, contraseña y clave Base32 de enrolamiento de Mi
 
 La configuración de solicitud se guarda en el mismo archivo con `PAM_START_DATE`, `PAM_START_TIME`, `PAM_SESSION_HOURS` y `PAM_REQUEST_REASON`. La fecha se elige con listas de día y mes, pero se sigue persistiendo como `dd/mm`. Cada mes ofrece únicamente sus 28, 29, 30 o 31 días reales; los meses anteriores y los días ya transcurridos del mes actual no aparecen en las listas y, por tanto, no pueden seleccionarse. El año vigente de Ecuador se añade automáticamente y junto al campo se muestra la lectura completa, por ejemplo `Sábado, 1 de agosto de 2026`. Al abrir `Editar solicitud`, una fecha anterior al día actual de Ecuador se reemplaza y persiste automáticamente con la fecha de hoy; la hora, duración y razón no cambian. En la web local, la hora se introduce como `hh:mm` y se elige `AM` o `PM`; el servidor la convierte y persiste como `HH:mm` de 24 horas. El control real de BeyondInsight es `<input type="time">`: Playwright debe asignarle el valor técnico `HH:mm`, aunque Chrome lo presenta visualmente como `hh:mm AM/PM`. La duración admite únicamente números enteros de 1 a 8 y se escribe en `Hours`, manteniendo `Days` en cero. Antes de iniciar PowerShell, el servidor rechaza una fecha u hora que ya haya pasado en `America/Guayaquil`.
 
-La configuración del correo se guarda por separado en `.env.mail`, también excluido de Git y creado automáticamente. `Tu correo de Outlook`, `Para`, `CC` y contenido comienzan vacíos. El remitente debe coincidir con la cuenta iniciada en Outlook clásico. `Para` y `CC` admiten varias direcciones separadas por punto y coma, por ejemplo `uno@empresa.com;dos@empresa.com`. Después del primer guardado, al volver a entrar en `/correo` se recuperan todos los valores configurados por el usuario. La página muestra además que el envío automático requiere Outlook clásico instalado y con la sesión iniciada.
+La configuración del correo se guarda por separado en `.env.mail`, también excluido de Git y creado automáticamente. El remitente de Outlook se configura en el panel derecho de `/credenciales`; `Para`, `CC` y contenido se configuran en `/correo` y comienzan vacíos. El remitente debe coincidir exactamente con la cuenta iniciada en Outlook clásico. `Para` y `CC` admiten varias direcciones separadas por punto y coma, por ejemplo `uno@empresa.com;dos@empresa.com`. Después del primer guardado, cada pantalla recupera sus propios valores configurados.
 
 ## Prueba visible
 
@@ -130,9 +130,11 @@ Existe un modo técnico deliberadamente limitado para validar un único envío s
 
 El proceso abre Outlook clásico mediante COM y busca exactamente una cuenta cuyo `SmtpAddress` coincida con `PAM_MAIL_SENDER`. Usa la sesión de Outlook ya iniciada por cada usuario; no almacena la contraseña de Outlook, no usa coordenadas y no controla visualmente la pantalla. Si la cuenta no existe o aparece más de una coincidencia, el envío se detiene con un error.
 
+En `Configurar credenciales`, el botón de Outlook comprueba que Outlook clásico pueda abrirse, que exista exactamente esa cuenta en el perfil y que pueda asignarse como remitente. Para esta comprobación crea un mensaje temporal y lo descarta, sin enviarlo; el valor solo se guarda si la prueba termina correctamente. `Enviar correo de prueba` solicita confirmación y envía un mensaje a la misma cuenta configurada. Antes de iniciar una automatización cuyo resultado sea correo, la aplicación repite la comprobación de Outlook para evitar abrir PAM cuando el cliente o la sesión no están disponibles.
+
 ### Configurar destinatarios y contenido
 
-Abra `INICIAR_INTERFAZ.cmd` y seleccione `Configurar envío de correo`. Escriba en `Tu correo de Outlook` la cuenta remitente que ya tiene iniciada en Outlook clásico. `Para` requiere al menos una dirección; tanto `Para` como `CC` aceptan listas separadas por `;`. Las direcciones se validan, no pueden repetirse y una dirección de `Para` no puede aparecer nuevamente en `CC`.
+Abra `INICIAR_INTERFAZ.cmd`, seleccione `Configurar credenciales` y verifique primero la cuenta remitente en el panel de Outlook. Después abra `Configurar envío de correo`: `Para` requiere al menos una dirección; tanto `Para` como `CC` aceptan listas separadas por `;`. Las direcciones se validan, no pueden repetirse y una dirección de `Para` no puede aparecer nuevamente en `CC`.
 
 El campo de contenido aparece vacío hasta que el usuario escriba y guarde su propio mensaje. Admite texto con formato, tablas e imágenes pegadas desde el portapapeles. La política local permite estilos en línea para representar ese formato, pero mantiene bloqueados scripts, objetos, marcos y conexiones externas; además, el servidor sanea el HTML al guardar. Las imágenes se guardan como datos locales y, al preparar el mensaje, se convierten en adjuntos inline con identificadores CID para que Outlook clásico las muestre dentro del cuerpo.
 
