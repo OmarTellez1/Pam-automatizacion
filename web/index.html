@@ -68,6 +68,11 @@
         Se obtuvieron las solicitudes de las cuentas favoritas. Puede copiar los IDs para utilizarlos donde necesite.
       </p>
       <ol id="automation-result-ids" class="result-ids" aria-label="Request ID obtenidos"></ol>
+      <section id="automation-result-conflicts" class="result-conflicts" hidden
+        aria-labelledby="automation-conflicts-title">
+        <h3 id="automation-conflicts-title">Solicitudes omitidas por acceso aprobado</h3>
+        <ul id="automation-conflict-list"></ul>
+      </section>
       <p id="automation-result-time" class="result-time"></p>
       <div class="result-dialog-actions">
         <button id="copy-result-ids" class="button button-primary result-button" type="button">
@@ -88,9 +93,28 @@
       <p id="email-success-description" class="result-description">
         Outlook aceptó el correo generado por la automatización.
       </p>
+      <section id="email-success-conflicts" class="result-conflicts" hidden
+        aria-labelledby="email-success-conflicts-title">
+        <h3 id="email-success-conflicts-title">Solicitudes omitidas por acceso aprobado</h3>
+        <ul id="email-success-conflict-list"></ul>
+      </section>
       <button id="dismiss-email-success" class="button button-primary result-button" type="button">
         Cerrar
       </button>
+    </dialog>
+
+    <dialog id="automation-error-dialog" class="result-dialog error-dialog"
+      aria-labelledby="automation-error-title" aria-describedby="automation-error-description">
+      <span class="error-dialog-icon" aria-hidden="true">!</span>
+      <span class="result-kicker error-kicker">No se inició la automatización</span>
+      <h2 id="automation-error-title">La fecha y hora configuradas ya pasaron</h2>
+      <p id="automation-error-description" class="result-description"></p>
+      <div class="result-dialog-actions">
+        <a class="button button-primary result-button" href="/solicitud">Editar solicitud</a>
+        <button id="dismiss-automation-error" class="button button-neutral result-button" type="button">
+          Cerrar
+        </button>
+      </div>
     </dialog>
     <script src="/app.js" defer></script>
   </body>

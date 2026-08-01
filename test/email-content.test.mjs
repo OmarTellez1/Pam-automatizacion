@@ -46,6 +46,42 @@ test("usa todos los ID Pending de la cantidad actual de Favorites", () => {
   );
 });
 
+test("acepta resultados parciales cubiertos por conflictos de acceso aprobado", () => {
+  const result = {
+    favoriteCount: 3,
+    requestIds: ["170001", "170002"],
+    pending: [
+      { id: "170001", status: "Pending", system: "A", account: "one", application: "PuTTY" },
+      { id: "170002", status: "Pending", system: "B", account: "two", application: "WinSCP" },
+    ],
+    conflicts: [{
+      type: "approved_access_overlap",
+      system: "C",
+      account: "three",
+      application: "PLSQL",
+    }],
+  };
+  assert.deepEqual(extractValidatedRequestIds(result), ["170001", "170002"]);
+  assert.throws(
+    () => extractValidatedRequestIds({
+      ...result,
+      conflicts: [{ ...result.conflicts[0], system: "A", account: "one", application: "PuTTY" }],
+    }),
+    /no cubren Favorites/,
+  );
+  assert.deepEqual(extractValidatedRequestIds({
+    favoriteCount: 1,
+    requestIds: [],
+    pending: [],
+    conflicts: [{
+      type: "approved_access_overlap",
+      system: "C",
+      account: "three",
+      application: "PLSQL",
+    }],
+  }), []);
+});
+
 test("acepta IDs simulados solo en un resultado de prueba completo", () => {
   const result = {
     testMode: true,

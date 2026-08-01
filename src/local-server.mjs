@@ -139,6 +139,7 @@ export function createLocalServer(options = {}) {
   const mailEnvPath = options.mailEnvPath ?? defaultMailEnvPath;
   const automationResultPath = options.automationResultPath ?? defaultAutomationResultPath;
   const authenticate = options.authenticate ?? verifyLogin;
+  const now = options.now ?? (() => new Date());
   const automationController = options.automationController ?? createAutomationController({
     envPath,
     mailEnvPath,
@@ -164,7 +165,11 @@ export function createLocalServer(options = {}) {
       }
 
       if (request.method === "GET" && url.pathname === "/api/request-settings") {
-        sendJson(response, 200, await getRequestSettingsState({ envPath }));
+        sendJson(response, 200, await getRequestSettingsState({
+          envPath,
+          refreshPastDate: url.searchParams.get("refreshPastDate") === "true",
+          now: now(),
+        }));
         return;
       }
 

@@ -20,17 +20,21 @@ export async function getLatestAutomationResult(options = {}) {
 
     const requestIds = extractValidatedRequestIds(result);
     const favoriteCount = result.favoriteCount ?? result.pending.length;
+    const conflicts = Array.isArray(result.conflicts) ? result.conflicts : [];
     const configuredTime = Date.parse(result.completedAt);
     const completedAt = Number.isFinite(configuredTime)
       ? new Date(configuredTime).toISOString()
       : fileStats.mtime.toISOString();
     return {
       available: true,
-      resultId: `${completedAt}:${requestIds.join(",")}`,
+      resultId: `${completedAt}:${requestIds.join(",")}:${conflicts.map((item) =>
+        [item.system, item.account, item.application].join("|")
+      ).join(",")}`,
       completedAt,
       favoriteCount,
       testMode: result.testMode === true,
       requestIds,
+      conflicts,
     };
   } catch (error) {
     if (error.code === "ENOENT") return { available: false };

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { createAutomationController } from "../src/automation-runner.mjs";
+import { updateProjectEnvironment } from "../src/env-config.mjs";
 import { formatAutomationEmailSubject } from "../src/simulation.mjs";
 
 async function createConfiguredEnvironment(testButtonValue) {
@@ -50,6 +51,23 @@ test("habilita el modo de prueba únicamente con BOTON_PRUEBA=TRUE", async () =>
   await assert.rejects(() => disabled.start("test"), /no está habilitado/);
 });
 
+test("rechaza un horario pasado antes de iniciar PowerShell", async () => {
+  const paths = await createConfiguredEnvironment("TRUE");
+  await updateProjectEnvironment({
+    PAM_START_DATE: "01/08",
+    PAM_START_TIME: "10:00",
+  }, { envPath: paths.envPath });
+  let runnerCalled = false;
+  const controller = createAutomationController({
+    ...paths,
+    now: () => new Date("2026-08-01T18:35:00.000Z"),
+    runner: async () => { runnerCalled = true; },
+  });
+
+  await assert.rejects(() => controller.start("real"), /fecha y hora de inicio ya pasaron/);
+  assert.equal(runnerCalled, false);
+});
+
 test("identifica únicamente los asuntos de correo simulados", () => {
   assert.equal(formatAutomationEmailSubject("Accesos PAM", true), "[PRUEBA] Accesos PAM");
   assert.equal(formatAutomationEmailSubject("Accesos PAM", false), "Accesos PAM");
@@ -62,6 +80,7 @@ test("impide dos automatizaciones simultáneas y conserva el modo solicitado", a
   const controller = createAutomationController({
     ...paths,
     runner: async () => running,
+    resultLoader: async () => ({ sendEmail: true, conflicts: [] }),
   });
 
   const started = await controller.start("test");
@@ -98,6 +117,7 @@ test("informa el bloqueo temporal y confirma el correo al completar", async () =
   const controller = createAutomationController({
     ...paths,
     runner: async () => running,
+    resultLoader: async () => ({ sendEmail: true, conflicts: [] }),
   });
 
   const started = await controller.start("test");
@@ -111,4 +131,29 @@ test("informa el bloqueo temporal y confirma el correo al completar", async () =
   assert.equal(completed.state, "completed");
   assert.equal(completed.emailSent, true);
   assert.match(completed.message, /correo se envió correctamente/);
+});
+
+test("no confirma correo cuando todos los accesos terminaron en conflicto", async () => {
+  const paths = await createConfiguredEnvironment("TRUE");
+  await configureEmailFinalAction(paths);
+  const conflict = {
+    type: "approved_access_overlap",
+    system: "NOSQLBOOSTER",
+    account: "TicProyectos",
+    application: "NOSQLBOOSTER",
+    requestStartDate: "Aug 03, 2026, 12:00 AM",
+  };
+  const controller = createAutomationController({
+    ...paths,
+    runner: async () => {},
+    resultLoader: async () => ({ sendEmail: false, conflicts: [conflict] }),
+  });
+
+  await controller.start("real");
+  await new Promise((resolve) => setImmediate(resolve));
+  const completed = await controller.getStatus();
+  assert.equal(completed.state, "completed");
+  assert.equal(completed.emailSent, false);
+  assert.deepEqual(completed.conflicts, [conflict]);
+  assert.match(completed.message, /No se envió correo/);
 });

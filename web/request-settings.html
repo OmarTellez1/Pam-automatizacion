@@ -25,9 +25,22 @@
         <section class="form-card" aria-label="Formulario de configuración de solicitud">
           <form id="request-settings-form">
             <div class="field">
-              <label for="startDate">Fecha de inicio</label>
-              <input id="startDate" name="startDate" type="text" inputmode="numeric"
-                maxlength="5" pattern="[0-9]{2}/[0-9]{2}" required placeholder="dd/mm">
+              <div class="field-heading date-heading">
+                <span class="field-label">Fecha de inicio</span>
+                <output id="start-date-readable" class="date-readable" for="startDay startMonth"
+                  aria-live="polite"></output>
+              </div>
+              <div class="date-selection">
+                <div class="date-part">
+                  <label for="startDay">Día</label>
+                  <select id="startDay" name="startDay" required></select>
+                </div>
+                <div class="date-part">
+                  <label for="startMonth">Mes</label>
+                  <select id="startMonth" name="startMonth" required></select>
+                </div>
+              </div>
+              <input id="startDate" name="startDate" type="hidden">
             </div>
 
             <div class="field">

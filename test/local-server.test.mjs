@@ -9,7 +9,7 @@ import {
   startLocalInterface,
 } from "../src/local-server.mjs";
 
-async function withServer(callback) {
+async function withServer(callback, options = {}) {
   const directory = await mkdtemp(path.join(tmpdir(), "pam-ui-"));
   const envPath = path.join(directory, ".env");
   const mailEnvPath = path.join(directory, ".env.mail");
@@ -20,6 +20,7 @@ async function withServer(callback) {
     envPath,
     mailEnvPath,
     automationResultPath,
+    now: options.now,
     authenticate: async (credentials) => {
       testedCredentials.push(credentials);
     },
@@ -236,6 +237,37 @@ test("guarda y devuelve la configuración persistente de solicitud", async () =>
     assert.equal(loaded.settings.sessionHours, settings.sessionHours);
     assert.equal(loaded.settings.startTime, "14:15");
   });
+});
+
+test("actualiza por API solo la fecha pasada al abrir la configuración de solicitud", async () => {
+  await withServer(async ({ baseUrl }) => {
+    const response = await fetch(`${baseUrl}/api/request-settings`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Origin: baseUrl,
+      },
+      body: JSON.stringify({
+        startDate: "31/07",
+        startTime12: "09:00",
+        startPeriod: "AM",
+        sessionHours: 8,
+        reason: "Prueba de fecha automática",
+      }),
+    });
+    assert.equal(response.status, 200);
+
+    const unchanged = await fetch(`${baseUrl}/api/request-settings`).then((result) => result.json());
+    assert.equal(unchanged.settings.startDate, "31/07");
+
+    const refreshed = await fetch(
+      `${baseUrl}/api/request-settings?refreshPastDate=true`,
+    ).then((result) => result.json());
+    assert.equal(refreshed.dateUpdated, true);
+    assert.equal(refreshed.settings.startDate, "01/08");
+    assert.equal(refreshed.settings.startTime12, "09:00");
+    assert.equal(refreshed.settings.startPeriod, "AM");
+  }, { now: () => new Date("2026-08-01T18:35:00.000Z") });
 });
 
 test("guarda y devuelve destinatarios y contenido enriquecido del correo", async () => {

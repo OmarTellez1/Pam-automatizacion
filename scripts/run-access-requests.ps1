@@ -9,6 +9,9 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+$utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+[Console]::OutputEncoding = $utf8NoBom
+$OutputEncoding = $utf8NoBom
 
 $projectDirectory = Split-Path -Parent $PSScriptRoot
 . (Join-Path $PSScriptRoot 'runtime.ps1')
@@ -72,12 +75,24 @@ try {
         }
         else {
             $favoriteCount = [int]$result.favoriteCount
+            $conflicts = @($result.conflicts)
+            $expectedRequestCount = $favoriteCount - $conflicts.Count
             if ($favoriteCount -lt 1) {
                 throw 'El resultado no contiene una cantidad válida de cuentas favoritas.'
             }
-            if ($requestIds.Count -ne $favoriteCount) {
-                throw "Se esperaban $favoriteCount Request ID; se encontraron $($requestIds.Count)."
+            if ($expectedRequestCount -lt 0 -or $requestIds.Count -ne $expectedRequestCount) {
+                throw "Se esperaban $expectedRequestCount Request ID y $($conflicts.Count) conflictos; se encontraron $($requestIds.Count) ID."
             }
+            Write-Host "Conflictos por acceso aprobado superpuesto: $($conflicts.Count)"
+            foreach ($conflict in $conflicts) {
+                Write-Warning "Solicitud omitida: $($conflict.system) / $($conflict.application) / $($conflict.account) - $($conflict.requestStartDate)"
+            }
+        }
+
+        if ([bool]$result.sendEmail -and $requestIds.Count -eq 0) {
+            $result.sendEmail = $false
+            $result | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $resultPath -Encoding UTF8
+            Write-Warning 'No se enviará correo porque todos los accesos fueron omitidos y no existen Request ID nuevos. El resultado quedará disponible en la interfaz web.'
         }
 
         if ([bool]$result.sendEmail) {

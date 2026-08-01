@@ -230,6 +230,27 @@ Durante el desarrollo, un agente nunca debe ejecutar `INICIAR_AUTOMATIZACION.cmd
 - La portada deshabilita los tres enlaces de configuración, el toggle y los botones de prueba y producción durante cualquier ejecución. El estado explica que se reactivarán al terminar con éxito o con error.
 - Una finalización exitosa cuya acción fue correo abre un diálogo pequeño de confirmación con botón `Cerrar`; una ejecución fallida no puede mostrar esa confirmación.
 - Aprobaron 14 pruebas automatizadas relevantes y una validación visible en Chrome con API simulada comprobó bloqueo, restauración, diálogo de éxito y restauración después de error. No se abrió PAM ni se envió correo durante esta validación.
+- Se corrigió la reapertura del diálogo de IDs al reiniciar el frontend: el resultado persistido se toma como línea base ya vista y únicamente un `resultId` posterior puede abrirlo.
+
+### 21. Envío real único y selección por Request Start Date
+
+- Con autorización expresa del usuario se añadió una ruta técnica `--single-submit`, incompatible con `--execute` y `--test-run`, que no admite correo y puede presionar `Submit Request` una sola vez. Su evidencia se guarda separada de `last-run.json`.
+- El 1 de agosto de 2026 se realizó una única solicitud visible para `01/08/2026 07:00 PM`, duración de 8 horas, sobre `NOSQLBOOSTER / NOSQLBOOSTER`. PAM aceptó el formulario y la solicitud apareció en `Pending` con Request ID `140266` y `Request Start Date` exactamente `Aug 01, 2026, 7:00 PM`. No se intentó una segunda cuenta y no se envió correo.
+- La selección de solicitudes se extrajo como regla comprobable: primero coincide `Request Start Date` completo; después se cruza la identidad estable de sistema, cuenta y familia de aplicación con `Favorites`. La razón se conserva como contenido de la solicitud, pero no participa en la identificación porque normalmente se reutiliza.
+- La prueba unitaria cubre misma fecha con otra hora, otra fecha, razones distintas y espacios visuales normalizados; las razones distintas se aceptan cuando el `Request Start Date` coincide.
+
+### 22. Continuación ante accesos aprobados superpuestos
+
+- Por autorización expresa del usuario se consultó temporalmente `Approved` para elegir un caso controlado. NOSQLBOOSTER tenía el Request ID aprobado `140236` con inicio `Aug 03, 2026, 12:00 AM`.
+- Un intento único sobre NOSQLBOOSTER para ese mismo inicio y 8 horas confirmó la respuesta real de PAM: HTTP `400`, código `PSPortal.Requests.Policies.RemoteAppAccesssAlreadyAvailable` y mensaje `This account is already available during the requested time for Application access.` No se creó una solicitud nueva.
+- La automatización reconoce exclusivamente ese código como recuperable. Cierra y descarta el formulario, registra sistema, aplicación, cuenta, inicio y duración, y continúa con el siguiente favorito. Otros errores siguen abortando la ejecución.
+- El resultado permite menos IDs que favoritos solo cuando la diferencia está cubierta por conflictos únicos. Terminal, estado local y diálogo web informan las omisiones. Si no existe ningún ID y la acción era correo, se evita enviar un mensaje vacío y se entrega el resultado en la web.
+- Una segunda prueba real del mismo conflicto terminó correctamente con `submitted: 0`, sin Request ID y sin intentar otra cuenta. La validación visual simulada mostró un ID creado y NOSQLBOOSTER en la sección `Solicitudes omitidas por acceso aprobado` del diálogo final.
+- Una ejecución real posterior configurada para `01/08/2026 10:00 AM` ocurrió después de esa hora. PAM mostró una validación local (`The time must be between 1:35 PM and 11:59 PM`) y no emitió ningún POST, lo que causaba un timeout de 30 segundos. Ahora fecha y hora pasadas se rechazan antes de iniciar PowerShell y el observador del formulario reconoce también esa validación visible. La salida de PowerShell se fuerza a UTF-8 para conservar las tildes en terminal y logs.
+- La advertencia de horario pasado dejó de ser un texto transitorio: ahora se muestra en un diálogo persistente con el motivo exacto, `Editar solicitud` y `Cerrar`. El sondeo periódico conserva el error en pantalla y no vuelve a mostrar `La automatización está lista` hasta que el usuario cierre el cuadro.
+- Al abrir `Editar solicitud`, una fecha guardada anterior al día actual de Ecuador se cambia automáticamente por hoy y se persiste en `.env`. La hora configurada conserva exactamente su valor anterior, al igual que la duración y la razón; la pantalla informa cuando hizo el ajuste.
+- El campo `Fecha de inicio` presenta junto a su etiqueta el día de la semana y la fecha completa en español —por ejemplo, `Sábado, 1 de agosto de 2026`— y los actualiza inmediatamente mientras el usuario escribe un valor `dd/mm` válido.
+- La fecha dejó de escribirse manualmente: ahora usa selectores verticales de día y mes. La cantidad de días se calcula para el mes y año actuales; los meses anteriores y los días ya transcurridos del mes actual se omiten por completo, por lo que no son visibles ni seleccionables. El valor persistido conserva el formato `dd/mm` compatible con la automatización.
 
 ### 7. Migración y Git
 

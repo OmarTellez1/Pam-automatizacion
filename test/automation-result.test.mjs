@@ -57,6 +57,37 @@ test("distingue un resultado web de prueba con IDs simulados", async () => {
   assert.deepEqual(result.requestIds, SIMULATED_REQUEST_IDS);
 });
 
+test("devuelve las solicitudes omitidas por solapamiento aprobado", async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), "pam-result-conflicts-"));
+  const resultPath = path.join(directory, "last-run.json");
+  const conflict = {
+    type: "approved_access_overlap",
+    system: "NOSQLBOOSTER",
+    account: "TicProyectos",
+    application: "NOSQLBOOSTER",
+    requestStartDate: "Aug 03, 2026, 12:00 AM",
+    message: "This account is already available during the requested time for Application access.",
+  };
+  await writeFile(resultPath, JSON.stringify({
+    completedAt: "2026-08-01T15:00:00.000Z",
+    favoriteCount: 2,
+    requestIds: ["170001"],
+    pending: [{
+      id: "170001",
+      status: "Pending",
+      system: "PGDCMSA01",
+      account: "creditenginelg",
+      application: "PuTTY",
+    }],
+    conflicts: [conflict],
+    sendEmail: false,
+  }), "utf8");
+
+  const result = await getLatestAutomationResult({ resultPath });
+  assert.deepEqual(result.requestIds, ["170001"]);
+  assert.deepEqual(result.conflicts, [conflict]);
+});
+
 test("no anuncia resultados cuando todavía no existe una ejecución", async () => {
   const directory = await mkdtemp(path.join(tmpdir(), "pam-result-missing-"));
   assert.deepEqual(

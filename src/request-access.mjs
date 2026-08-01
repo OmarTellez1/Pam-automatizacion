@@ -8,10 +8,12 @@ import {
   DEFAULT_HOURS,
   DEFAULT_REASON,
   expectedReleaseText,
+  filterRequestsByStartDate,
   formatIsoDateAsDayMonthYear,
   formatTime12Hour,
   parseDayMonthForEcuador,
   requestKey,
+  validateRequestStartNotPast,
   validateStartTime,
 } from "./request-config.mjs";
 import { loadRequestSettings } from "./request-settings.mjs";
@@ -37,6 +39,7 @@ async function parseArguments(argv) {
     emailInput: undefined,
     sendEmail: undefined,
     execute: false,
+    singleSubmit: false,
     testRun: false,
     headed: isEnabled(process.env.BI_HEADED),
   };
@@ -47,13 +50,14 @@ async function parseArguments(argv) {
     else if (argument === "--time") result.startTime = argv[++index];
     else if (argument === "--email") result.emailInput = argv[++index];
     else if (argument === "--execute") result.execute = true;
+    else if (argument === "--single-submit") result.singleSubmit = true;
     else if (argument === "--test-run") result.testRun = true;
     else if (argument === "--headed") result.headed = true;
     else throw new Error(`Argumento desconocido: ${argument}`);
   }
 
-  if (result.execute && result.testRun) {
-    throw new Error("Los modos real y de prueba no pueden ejecutarse al mismo tiempo.");
+  if ([result.execute, result.singleSubmit, result.testRun].filter(Boolean).length > 1) {
+    throw new Error("Los modos real, envío único y prueba no pueden ejecutarse al mismo tiempo.");
   }
 
   let storedSettings;
@@ -104,8 +108,14 @@ async function parseArguments(argv) {
     result.date = parseDayMonthForEcuador(result.dateInput);
   }
   result.startTime = validateStartTime(result.startTime);
+  if (result.execute || result.singleSubmit) {
+    validateRequestStartNotPast(result.date, result.startTime);
+  }
   if (result.sendEmail === undefined) {
     result.sendEmail = parseYesNo(result.emailInput);
+  }
+  if (result.singleSubmit && result.sendEmail) {
+    throw new Error("La prueba de envío único no admite correo automático.");
   }
   console.log(`Fecha confirmada: ${formatIsoDateAsDayMonthYear(result.date)}`);
   console.log(
@@ -221,16 +231,9 @@ async function readPendingRequests(page) {
   }));
 }
 
-function desiredRequests(requests, options) {
-  const release = expectedReleaseText(options.date, options.startTime);
-  return requests.filter(
-    (request) => request.release === release && request.reason === options.reason,
-  );
-}
-
 async function findExistingRequests(page, options) {
   const pending = await readPendingRequests(page);
-  return desiredRequests(pending, options);
+  return filterRequestsByStartDate(pending, options);
 }
 
 async function setStartDate(page, locator, date) {
@@ -373,27 +376,125 @@ async function fillRequestForm(page, options) {
   }
 }
 
+const APPROVED_ACCESS_OVERLAP_CODE =
+  "PSPortal.Requests.Policies.RemoteAppAccesssAlreadyAvailable";
+
+export function classifySubmissionResponse(status, payload) {
+  if (status >= 200 && status < 300) return { submitted: true };
+
+  const code = payload?.ErrorDetails?.ErrorCode?.Key;
+  const message = String(payload?.Message ?? "").trim();
+  if (status === 400 && code === APPROVED_ACCESS_OVERLAP_CODE) {
+    return {
+      submitted: false,
+      conflict: {
+        type: "approved_access_overlap",
+        code,
+        message: message || "La cuenta ya está disponible durante el horario solicitado.",
+      },
+    };
+  }
+
+  throw new Error(
+    `PAM rechazó Submit Request con HTTP ${status}${code ? ` (${code})` : ""}` +
+    `${message ? `: ${message}` : "."}`,
+  );
+}
+
+function observeSubmissionOutcome(page, submit) {
+  const invalidTime = page
+    .getByText(/^The time must be between .+ and .+\.$/i)
+    .filter({ visible: true });
+
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (callback, value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      page.off("response", onResponse);
+      callback(value);
+    };
+    const onResponse = async (response) => {
+      const url = new URL(response.url());
+      if (
+        response.request().method() !== "POST" ||
+        !url.pathname.toLowerCase().endsWith("/api/ps-portal/requests")
+      ) return;
+      let payload;
+      try {
+        payload = await response.json();
+      } catch {
+        payload = undefined;
+      }
+      try {
+        finish(resolve, classifySubmissionResponse(response.status(), payload));
+      } catch (error) {
+        finish(reject, error);
+      }
+    };
+    const poll = async () => {
+      while (!settled) {
+        try {
+          if ((await invalidTime.count()) > 0) {
+            const message = (await invalidTime.first().textContent())?.replace(/\s+/g, " ").trim();
+            finish(reject, new Error(
+              `PAM no permite la hora solicitada: ${message} ` +
+              "Edite la solicitud y seleccione un horario válido.",
+            ));
+            return;
+          }
+          if (await submit.isHidden()) {
+            finish(resolve, { submitted: true });
+            return;
+          }
+          await page.waitForTimeout(100);
+        } catch (error) {
+          finish(reject, error);
+        }
+      }
+    };
+    const timeout = setTimeout(() => {
+      finish(reject, new Error(
+        "PAM no respondió a Submit Request ni mostró una validación reconocida en 30 segundos.",
+      ));
+    }, 30_000);
+    page.on("response", onResponse);
+    void poll();
+  });
+}
+
+async function closeRequestForm(page) {
+  const cancel = page.getByRole("button", { name: "Cancel", exact: true });
+  await cancel.click();
+  const discard = page.getByRole("button", { name: "Discard Changes", exact: true });
+  await discard.waitFor({ state: "visible", timeout: 10_000 });
+  await discard.click();
+  await cancel.waitFor({ state: "hidden", timeout: 15_000 });
+}
+
 async function submitOneRequest(page, target, options, expectedCount) {
   await openRequestForm(page, target, expectedCount);
   await fillRequestForm(page, options);
 
   if (!options.execute) {
-    const cancel = page.getByRole("button", { name: "Cancel", exact: true });
-    await cancel.click();
-    const discard = page.getByRole("button", { name: "Discard Changes", exact: true });
-    await discard.waitFor({ state: "visible", timeout: 10_000 });
-    await discard.click();
-    await cancel.waitFor({ state: "hidden", timeout: 15_000 });
-    return false;
+    await closeRequestForm(page);
+    return { submitted: false, cancelled: true };
   }
 
   const submit = page.getByRole("button", { name: "Submit Request", exact: true });
   if ((await submit.count()) !== 1) {
     throw new Error("El botón final Submit Request no es único.");
   }
+  const submissionOutcome = observeSubmissionOutcome(page, submit);
   await submit.click();
+  const outcome = await submissionOutcome;
+  if (outcome.conflict) {
+    await closeRequestForm(page);
+    return outcome;
+  }
   await submit.waitFor({ state: "hidden", timeout: 30_000 });
-  return true;
+  return outcome;
 }
 
 async function saveResult(result) {
@@ -401,6 +502,33 @@ async function saveResult(result) {
   const resultPath = path.join(resultsDirectory, "last-run.json");
   await writeFile(resultPath, `${JSON.stringify(result, null, 2)}\n`, "utf8");
   return resultPath;
+}
+
+async function saveSingleSubmitVerification(result) {
+  await mkdir(resultsDirectory, { recursive: true });
+  const resultPath = path.join(resultsDirectory, "single-submit-verification.json");
+  await writeFile(resultPath, `${JSON.stringify(result, null, 2)}\n`, "utf8");
+  return resultPath;
+}
+
+async function waitForPendingRequest(page, target, options) {
+  const expectedKey = requestKey(target);
+  for (let attempt = 1; attempt <= 6; attempt += 1) {
+    const matching = filterRequestsByStartDate(
+      await readPendingRequests(page),
+      options,
+    ).filter((request) => requestKey(request) === expectedKey);
+    if (matching.length === 1) return matching[0];
+    if (matching.length > 1) {
+      throw new Error(
+        "Pending contiene más de una solicitud para la misma cuenta y Request Start Date.",
+      );
+    }
+    if (attempt < 6) await page.waitForTimeout(2_000);
+  }
+  throw new Error(
+    `No apareció en Pending la solicitud con Request Start Date ${expectedReleaseText(options.date, options.startTime)}.`,
+  );
 }
 
 let session;
@@ -463,6 +591,68 @@ try {
     const resultPath = await saveResult(result);
     console.log(`Resultado de prueba guardado: ${resultPath}`);
     console.log(`REQUEST_IDS_SIMULADOS=${SIMULATED_REQUEST_IDS.join(",")}`);
+  } else if (options.singleSubmit) {
+    const observedCount = await openFavoriteAccounts(page);
+    if (observedCount !== favoriteCount) {
+      throw new Error(`Favorites cambió de ${favoriteCount} a ${observedCount} cuentas durante el envío único.`);
+    }
+
+    const target = targets.find((candidate) => !existingByKey.has(requestKey(candidate)));
+    if (!target) {
+      throw new Error("Todas las cuentas de Favorites ya tienen una solicitud Pending para esa fecha y hora.");
+    }
+
+    const outcome = await submitOneRequest(
+      page,
+      target,
+      { ...options, execute: true },
+      favoriteCount,
+    );
+    let verification;
+    if (outcome.conflict) {
+      const conflict = {
+        ...outcome.conflict,
+        system: target.system,
+        account: target.account,
+        application: target.application,
+        requestStartDate: expectedReleaseText(options.date, options.startTime),
+        hours: options.sessionHours,
+      };
+      verification = {
+        completedAt: new Date().toISOString(),
+        singleSubmit: true,
+        submitted: 0,
+        date: options.date,
+        startTime: options.startTime,
+        hours: options.sessionHours,
+        reason: options.reason,
+        target,
+        conflict,
+      };
+      console.warn(
+        `Solicitud omitida por acceso aprobado superpuesto: ${target.system} / ` +
+        `${target.application} — ${conflict.requestStartDate}.`,
+      );
+    } else {
+      console.log(`Única solicitud enviada: ${target.system} / ${target.application}.`);
+      const pendingRequest = await waitForPendingRequest(page, target, options);
+      verification = {
+        completedAt: new Date().toISOString(),
+        singleSubmit: true,
+        submitted: 1,
+        date: options.date,
+        startTime: options.startTime,
+        requestStartDate: pendingRequest.release,
+        hours: options.sessionHours,
+        reason: options.reason,
+        target,
+        requestId: pendingRequest.id,
+        status: pendingRequest.status,
+      };
+    }
+    const verificationPath = await saveSingleSubmitVerification(verification);
+    console.log(`Verificación de envío único guardada: ${verificationPath}`);
+    if (verification.requestId) console.log(`REQUEST_ID_UNICO=${verification.requestId}`);
   } else if (!options.execute) {
     const observedCount = await openFavoriteAccounts(page);
     if (observedCount !== favoriteCount) {
@@ -477,28 +667,59 @@ try {
     }
 
     let submitted = 0;
+    let processed = 0;
+    const conflicts = [];
     for (const target of targets) {
       if (existingByKey.has(requestKey(target))) {
+        processed += 1;
         console.log(`Solicitud existente: ${target.system} / ${target.application}`);
         continue;
       }
-      await submitOneRequest(page, target, options, favoriteCount);
+      const outcome = await submitOneRequest(page, target, options, favoriteCount);
+      processed += 1;
+      if (outcome.conflict) {
+        const conflict = {
+          ...outcome.conflict,
+          system: target.system,
+          account: target.account,
+          application: target.application,
+          requestStartDate: expectedReleaseText(options.date, options.startTime),
+          hours: options.sessionHours,
+        };
+        conflicts.push(conflict);
+        console.warn(
+          `Solicitud omitida por acceso aprobado superpuesto ${processed}/${favoriteCount}: ` +
+          `${target.system} / ${target.application} — ${conflict.requestStartDate}.`,
+        );
+        continue;
+      }
       submitted += 1;
-      console.log(`Solicitud enviada ${submitted}/${favoriteCount}: ${target.system} / ${target.application}`);
+      console.log(`Solicitud enviada ${processed}/${favoriteCount}: ${target.system} / ${target.application}`);
     }
 
     const favoriteKeys = new Set(targets.map(requestKey));
-    const pending = desiredRequests(await readPendingRequests(page), options)
+    const pending = filterRequestsByStartDate(await readPendingRequests(page), options)
       .filter((request) => favoriteKeys.has(requestKey(request)));
     const uniqueIds = [...new Set(pending.map((request) => request.id))];
     const uniquePendingKeys = new Set(pending.map(requestKey));
-    if (pending.length !== favoriteCount || uniquePendingKeys.size !== favoriteCount) {
+    const conflictKeys = new Set(conflicts.map(requestKey));
+    const expectedPendingCount = favoriteCount - conflicts.length;
+    const coveredKeys = new Set([...uniquePendingKeys, ...conflictKeys]);
+    if (
+      pending.length !== expectedPendingCount ||
+      uniquePendingKeys.size !== expectedPendingCount ||
+      conflictKeys.size !== conflicts.length ||
+      coveredKeys.size !== favoriteCount
+    ) {
       throw new Error(
-        `Se esperaban ${favoriteCount} solicitudes Pending, una por cuenta favorita; se encontraron ${pending.length}.`,
+        `Se esperaban ${expectedPendingCount} solicitudes Pending y ${conflicts.length} conflictos ` +
+        `para cubrir ${favoriteCount} favoritos; se encontraron ${pending.length} Pending.`,
       );
     }
-    if (uniqueIds.length !== favoriteCount) {
-      throw new Error(`Se esperaban ${favoriteCount} Request ID únicos; se encontraron ${uniqueIds.length}.`);
+    if (uniqueIds.length !== expectedPendingCount) {
+      throw new Error(
+        `Se esperaban ${expectedPendingCount} Request ID únicos; se encontraron ${uniqueIds.length}.`,
+      );
     }
     const result = {
       completedAt: new Date().toISOString(),
@@ -510,12 +731,20 @@ try {
       favoriteCount,
       pending,
       requestIds: uniqueIds,
+      conflicts,
       sendEmail: options.sendEmail,
     };
     const resultPath = await saveResult(result);
 
     console.log(`Resultado guardado: ${resultPath}`);
     console.log(`REQUEST_IDS=${uniqueIds.join(",")}`);
+    console.log(`CONFLICTOS_ACCESO_APROBADO=${conflicts.length}`);
+    for (const conflict of conflicts) {
+      console.warn(
+        `CONFLICTO: ${conflict.system} / ${conflict.application} / ${conflict.account} — ` +
+        `${conflict.requestStartDate}`,
+      );
+    }
   }
 } catch (error) {
   const artifacts = await saveFailureArtifact(error.page ?? session?.page, error);

@@ -50,6 +50,45 @@ export function validateStartTime(value) {
   return normalized;
 }
 
+function ecuadorMinute(date) {
+  const values = Object.fromEntries(
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/Guayaquil",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    }).formatToParts(date).map((part) => [part.type, part.value]),
+  );
+  return `${values.year}-${values.month}-${values.day}T${values.hour}:${values.minute}`;
+}
+
+export function replacePastDateWithTodayForEcuador(value, now = new Date()) {
+  const startDate = String(value).trim();
+  const requestedDate = parseDayMonthForEcuador(startDate, now);
+  const currentDate = ecuadorMinute(now).slice(0, 10);
+  if (requestedDate >= currentDate) {
+    return { startDate, updated: false };
+  }
+
+  const [, month, day] = currentDate.split("-");
+  return { startDate: `${day}/${month}`, updated: true };
+}
+
+export function validateRequestStartNotPast(date, startTime, now = new Date()) {
+  const requested = `${validateIsoDate(date)}T${validateStartTime(startTime)}`;
+  const current = ecuadorMinute(now);
+  if (requested < current) {
+    throw new Error(
+      "La fecha y hora de inicio ya pasaron en America/Guayaquil. " +
+      "Edite la solicitud y seleccione un horario actual o futuro.",
+    );
+  }
+  return { date, startTime };
+}
+
 export function parseTime12Hour(value, period) {
   const match = /^(0?[1-9]|1[0-2]):([0-5]\d)$/.exec(String(value ?? "").trim());
   const normalizedPeriod = String(period ?? "").trim().toUpperCase();
@@ -109,4 +148,15 @@ export function expectedReleaseText(date, time) {
   const period = hour >= 12 ? "PM" : "AM";
   const displayHour = hour % 12 || 12;
   return `${monthName} ${String(day).padStart(2, "0")}, ${year}, ${displayHour}:${String(minute).padStart(2, "0")} ${period}`;
+}
+
+function normalizeGridText(value) {
+  return String(value ?? "").replace(/\s+/g, " ").trim();
+}
+
+export function filterRequestsByStartDate(requests, options) {
+  const expectedStartDate = expectedReleaseText(options.date, options.startTime);
+  return requests.filter(
+    (request) => normalizeGridText(request.release) === expectedStartDate,
+  );
 }

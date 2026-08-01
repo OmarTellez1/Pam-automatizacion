@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { createWriteStream } from "node:fs";
-import { mkdir } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import {
@@ -11,10 +11,15 @@ import {
 } from "./env-config.mjs";
 import { getFinalActionState } from "./final-action.mjs";
 import { defaultMailEnvPath, getMailSettingsState } from "./mail-settings.mjs";
+import {
+  parseDayMonthForEcuador,
+  validateRequestStartNotPast,
+} from "./request-config.mjs";
 import { getRequestSettingsState } from "./request-settings.mjs";
 import { testButtonIsEnabled } from "./simulation.mjs";
 
 const automationScript = path.join(projectDirectory, "scripts", "run-access-requests.ps1");
+const automationResultPath = path.join(projectDirectory, "run-results", "last-run.json");
 export const automationLogsDirectory = path.join(projectDirectory, "logs");
 
 function statusError(message, statusCode = 400) {
@@ -83,6 +88,10 @@ export function createAutomationController(options = {}) {
   const envPath = options.envPath ?? defaultEnvPath;
   const mailEnvPath = options.mailEnvPath ?? defaultMailEnvPath;
   const runner = options.runner ?? runPowerShellAutomation;
+  const now = options.now ?? (() => new Date());
+  const resultLoader = options.resultLoader ?? (async () =>
+    JSON.parse(await readFile(options.resultPath ?? automationResultPath, "utf8"))
+  );
   let launchReserved = false;
   let status = {
     state: "idle",
@@ -115,8 +124,19 @@ export function createAutomationController(options = {}) {
       if (!(await credentialsAreConfigured(envPath))) {
         throw statusError("Configure primero las credenciales del PAM.");
       }
-      if (!(await getRequestSettingsState({ envPath })).configured) {
+      const requestState = await getRequestSettingsState({ envPath });
+      if (!requestState.configured) {
         throw statusError("Configure primero los parámetros de la solicitud.");
+      }
+      const currentTime = now();
+      try {
+        validateRequestStartNotPast(
+          parseDayMonthForEcuador(requestState.settings.startDate, currentTime),
+          requestState.settings.startTime,
+          currentTime,
+        );
+      } catch (error) {
+        throw statusError(error.message);
       }
       const finalAction = await getFinalActionState({ envPath });
       if (finalAction.sendEmail && !(await getMailSettingsState({ envPath: mailEnvPath })).configured) {
@@ -141,17 +161,36 @@ export function createAutomationController(options = {}) {
 
       void Promise.resolve()
         .then(() => runner(mode, { logPath }))
-        .then(() => {
+        .then(async () => {
+          let conflicts = [];
+          let completionResult;
+          try {
+            completionResult = await resultLoader(mode);
+            conflicts = Array.isArray(completionResult?.conflicts)
+              ? completionResult.conflicts
+              : [];
+          } catch {
+            conflicts = [];
+          }
+          const emailSent = finalAction.sendEmail && completionResult?.sendEmail !== false;
+          const emailSkipped = finalAction.sendEmail && completionResult?.sendEmail === false;
           status = {
             ...status,
             state: "completed",
-            emailSent: finalAction.sendEmail,
+            emailSent,
+            conflicts,
             completedAt: new Date().toISOString(),
-            message: finalAction.sendEmail
-              ? "La automatización terminó y el correo se envió correctamente."
+            message: emailSkipped
+              ? "La automatización terminó sin Request ID nuevos. No se envió correo; revise las solicitudes omitidas en la interfaz."
+              : emailSent
+              ? `La automatización terminó y el correo se envió correctamente.${conflicts.length
+                ? ` ${conflicts.length} solicitud${conflicts.length === 1 ? " fue omitida" : "es fueron omitidas"} por acceso aprobado superpuesto.`
+                : ""}`
               : mode === "test"
                 ? "Prueba completada sin enviar solicitudes al PAM."
-                : "Automatización real completada.",
+                : `Automatización real completada.${conflicts.length
+                  ? ` ${conflicts.length} solicitud${conflicts.length === 1 ? " fue omitida" : "es fueron omitidas"} por acceso aprobado superpuesto.`
+                  : ""}`,
           };
         })
         .catch((error) => {

@@ -38,9 +38,9 @@ Este documento no contiene credenciales, contraseñas, semillas TOTP ni códigos
 - Al iniciar la interfaz, `.env` y `.env.mail` se crean automáticamente si faltan. La creación usa exclusividad de archivo y nunca sobrescribe una configuración existente.
 - La interfaz web local guarda únicamente `BI_USERNAME`, `BI_PASSWORD` y `BI_TOTP_SECRET` en `.env`; prueba inmediatamente el inicio de sesión PAM sin crear solicitudes. El remitente de Outlook pertenece a `.env.mail`.
 - La interfaz solo escucha en `127.0.0.1`, valida Host y Origin, bloquea scripts y conexiones externas mediante CSP, permite estilos inline necesarios para el editor enriquecido, no precarga secretos y bloquea comprobaciones simultáneas.
-- La portada conserva el encabezado y muestra controles centrados para credenciales, solicitud, envío de correo, resultado final y ejecución. `Iniciar prueba` solo aparece con `BOTON_PRUEBA=TRUE`; `Iniciar automatización` siempre corresponde al modo real y exige confirmación. Durante cualquier ejecución todos esos controles se bloquean; se restauran al recibir un estado `completed` o `failed`. Si la acción final envió correo, el estado completado abre un diálogo de confirmación una sola vez.
+- La portada conserva el encabezado y muestra controles centrados para credenciales, solicitud, envío de correo, resultado final y ejecución. `Iniciar prueba` solo aparece con `BOTON_PRUEBA=TRUE`; `Iniciar automatización` siempre corresponde al modo real y exige confirmación. Durante cualquier ejecución todos esos controles se bloquean; se restauran al recibir un estado `completed` o `failed`. Si la acción final envió correo, el estado completado abre un diálogo de confirmación una sola vez. Un rechazo previo al inicio, incluida una fecha u hora pasada, abre un diálogo persistente; el sondeo de estado no borra el error mientras el usuario no cierre el cuadro o vaya a editar la solicitud.
 - En modo edición, cada campo vacío conserva el valor ya guardado. La prueba de login clasifica los fallos según ocurran antes del desafío TOTP, durante el desafío o después de la confirmación.
-- La configuración de solicitud muestra hora `hh:mm` con un selector `AM/PM`, la convierte de forma validada y persiste `PAM_START_TIME` como `HH:mm` de 24 horas para el portal. Sus valores no secretos regresan al formulario para poder editarlos.
+- La configuración de solicitud muestra hora `hh:mm` con un selector `AM/PM`, la convierte de forma validada y persiste `PAM_START_TIME` como `HH:mm` de 24 horas para el portal. Sus valores no secretos regresan al formulario para poder editarlos. Al abrir esa pantalla, el servidor compara solamente la fecha con el día actual de Ecuador: si ya pasó, actualiza y persiste `PAM_START_DATE` con hoy sin modificar hora, duración ni razón.
 - El remitente, `Para`, `CC` y el editor de correo comienzan vacíos. Después del primer guardado vuelven a cargar únicamente los valores configurados por el usuario; el HTML conserva formato seguro y sustituye los IDs y la razón con los datos de la ejecución actual.
 - La configuración de correo avisa que el envío requiere Outlook clásico instalado y una sesión iniciada; el nuevo Outlook no es compatible con COM.
 - La suite actual contiene 58 pruebas aprobadas.
@@ -74,7 +74,7 @@ La zona horaria del contexto del navegador y del cálculo de la fecha es `Americ
 - `src/configuration-bootstrap.mjs`: define los valores iniciales y coordina la creación no destructiva de `.env` y `.env.mail`.
 - `src/request-settings.mjs`: valida y persiste fecha, hora, duración y razón; limita la sesión a 1–8 horas.
 - `src/final-action.mjs`: valida y persiste la acción final segura en `.env`.
-- `src/automation-result.mjs`: valida el último resultado y expone todos los IDs cuando la acción final fue web.
+- `src/automation-result.mjs`: valida el último resultado y expone todos los IDs cuando la acción final fue web. El frontend toma el resultado existente durante el arranque como línea base sin mostrarlo; solo abre el diálogo cuando posteriormente cambia `resultId`.
 - `src/mail-settings.mjs`: valida listas de destinatarios, sanitiza HTML y persiste la configuración en `.env.mail`.
 - `src/local-server.mjs`: sirve la interfaz en loopback, expone solo el estado de configuración y coordina el guardado con la prueba de login.
 - `web/`: HTML, CSS y JavaScript de la interfaz local; no contiene reglas de autenticación ni secretos.
@@ -145,24 +145,24 @@ No se persisten cookies ni perfiles de navegador. Cada ejecución crea una sesi�
 
 `src/request-access.mjs` sigue este orden:
 
-1. Interpreta los argumentos y carga la configuración persistente de solicitud y resultado final. `--execute` selecciona producción; `--test-run` selecciona la prueba completa; ambos son mutuamente excluyentes. Sin ninguno se conserva la vista previa técnica de un solo formulario. Antes de una ejecución real o de prueba con correo, valida toda la configuración de `.env.mail`.
+1. Interpreta los argumentos y carga la configuración persistente de solicitud y resultado final. `--execute` selecciona producción; `--test-run` selecciona la prueba completa segura; `--single-submit` autoriza como máximo una solicitud técnica sin correo. Los tres modos son mutuamente excluyentes. Sin ninguno se conserva la vista previa técnica de un solo formulario. Antes de una ejecución real o de prueba con correo, valida toda la configuración de `.env.mail`.
 2. Elimina espacios al inicio y al final de cada respuesta. Una respuesta vacía o inválida genera un mensaje y repite la misma pregunta indefinidamente.
-3. Valida que la fecha use exactamente `dd/mm` y le añade el año actual calculado en `America/Guayaquil`.
-4. Valida que la hora use `HH:mm` de 24 horas y muestra su equivalencia de 12 horas. Por ejemplo, `14:00` se confirma como `02:00 PM`.
+3. Valida que la fecha use exactamente `dd/mm`, le añade el año actual calculado en `America/Guayaquil` y rechaza el inicio si el minuto configurado ya pasó.
+4. Valida que la hora use `HH:mm` de 24 horas y muestra su equivalencia de 12 horas. Por ejemplo, `14:00` se confirma como `02:00 PM`. El formulario también observa la validación dinámica `The time must be between ...` por si los límites de PAM cambian mientras la ejecución está abierta.
 5. Convierte `PAM_FINAL_ACTION` a `sendEmail`; ante ausencia usa `web` como valor seguro. El valor histórico `notepad` se migra a `web` al cargarlo.
 6. Permite cancelar voluntariamente con `Ctrl+C`, cierra el navegador si ya existe y devuelve el código de salida `130`.
 7. Inicia una sesión autenticada.
 8. Abre `Accounts`, localiza el encabezado real `Browse by Category`, selecciona `Favorites`, espera la primera fila y cuenta dinámicamente los `tr[aria-label^="Row "]`. El texto decorativo `N items` no se usa porque la grilla no lo expone como texto localizable.
 9. Lee las filas y construye para cada cuenta una identidad formada por sistema, cuenta y familia de aplicación.
-10. Abre `Requests`, selecciona exclusivamente `Pending` y lee las solicitudes actuales.
-11. Filtra las pendientes por fecha/hora exactas y por el motivo configurado.
+10. Abre `Requests`, selecciona exclusivamente `Pending` y lee las solicitudes actuales. Limita primero por `Request Start Date` exacto —fecha y hora—; por eso solicitudes anteriores con otra hora o fecha no contaminan el resultado. La razón no participa en la identificación.
+11. Filtra las pendientes por fecha y hora exactas. La razón no participa en la identificación.
 12. Construye un mapa de solicitudes pendientes equivalentes para evitar recrearlas.
 13. Regresa a `Accounts > Browse By Category > Favorites`, comprueba que el número no haya cambiado y procesa todas las filas en su orden visible.
 14. Antes de abrir cada fila, vuelve a comprobar su identidad para evitar actuar sobre una tabla que cambió.
-15. Para las solicitudes no existentes, pulsa `Access`, abre la pestaña `Submit Request`, completa fecha, hora visible `hh:mm AM/PM`, días, horas y razón desde la configuración efectiva, y valida todos los valores antes de enviar.
-16. Al terminar, vuelve a `Requests > Pending`, limita los resultados a las identidades de `Favorites` y exige un ID único por cada cuenta.
-17. Guarda `favoriteCount`, el resultado y la decisión de correo en `run-results/last-run.json`, y escribe una línea `REQUEST_IDS=id1,id2,...` en la consola.
-18. Si la acción final es `email`, vuelve a validar que `requestIds` coincida con `favoriteCount` solicitudes cuyo estado sea exactamente `Pending`.
+15. Para las solicitudes no existentes, pulsa `Access`, abre la pestaña `Submit Request`, completa fecha, hora visible `hh:mm AM/PM`, días, horas y razón desde la configuración efectiva, y valida todos los valores antes de enviar. Si el POST devuelve HTTP `400` con `PSPortal.Requests.Policies.RemoteAppAccesssAlreadyAvailable`, cierra el formulario, registra el conflicto aprobado y continúa; cualquier otro fallo sigue siendo fatal.
+16. Al terminar, vuelve a `Requests > Pending`, repite el filtro por `Request Start Date`, limita los resultados a las identidades de `Favorites` y exige que cada favorito quede cubierto exactamente una vez por un `Pending` o por un conflicto aprobado.
+17. Guarda `favoriteCount`, `pending`, `requestIds`, `conflicts` y la decisión de correo en `run-results/last-run.json`. La consola imprime los IDs y cada cuenta omitida.
+18. Si la acción final es `email`, vuelve a validar que `requestIds`, solicitudes `Pending` y conflictos cubran el total de favoritos. Si todos fueron omitidos, evita enviar un correo vacío y entrega el resultado en la web.
 19. `prepare-access-email.mjs` lee remitente, destinatarios, copias, asunto y HTML desde `.env.mail`; reemplaza IDs y razón, convierte imágenes `data:` a adjuntos CID y crea `email-manifest.json`. Outlook clásico exige una sola cuenta iniciada que coincida con el remitente, evita duplicados y llama a `MailItem.Send()`.
 20. Si la acción final es `web`, PowerShell no abre aplicaciones ni crea un archivo adicional. La portada consulta `/api/automation-result`, muestra la cantidad dinámica y todos los IDs en un diálogo y permite copiarlos.
 
@@ -194,7 +194,7 @@ Para evitar las preguntas y pasar los valores directamente:
 .\scripts\run-access-requests.ps1 -Date '01/08' -StartTime '14:00' -Headed
 ```
 
-La bandera `-Headed` muestra Chrome y debe usarse para validar cambios en el portal. Sin ella, Chrome se ejecuta de forma desatendida. `-Execute` continúa siendo la única bandera que autoriza presionar `Submit Request`; `-TestRun` puede enviar un correo de prueba, pero nunca crea solicitudes PAM.
+La bandera `-Headed` muestra Chrome y debe usarse para validar cambios en el portal. Sin ella, Chrome se ejecuta de forma desatendida. `-Execute` autoriza el flujo completo; la ruta técnica `--single-submit` autoriza exactamente un envío y no está expuesta en el frontend. `-TestRun` puede enviar un correo de prueba, pero nunca crea solicitudes PAM.
 
 Las preguntas interactivas terminan en dos puntos y un espacio para que la entrada quede visualmente separada:
 

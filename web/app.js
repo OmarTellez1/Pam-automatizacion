@@ -12,6 +12,8 @@ const resultKickerElement = document.querySelector("#automation-result-kicker");
 const resultTitleElement = document.querySelector("#automation-result-title");
 const resultDescriptionElement = document.querySelector("#automation-result-description");
 const resultIdsElement = document.querySelector("#automation-result-ids");
+const resultConflictsElement = document.querySelector("#automation-result-conflicts");
+const resultConflictListElement = document.querySelector("#automation-conflict-list");
 const resultTimeElement = document.querySelector("#automation-result-time");
 const copyResultButton = document.querySelector("#copy-result-ids");
 const copyResultStatus = document.querySelector("#copy-result-status");
@@ -20,12 +22,21 @@ const dismissResultButton = document.querySelector("#dismiss-result-dialog");
 const configurationLinks = [...document.querySelectorAll(".actions a.button")];
 const emailSuccessDialog = document.querySelector("#email-success-dialog");
 const dismissEmailSuccessButton = document.querySelector("#dismiss-email-success");
+const emailSuccessDescription = document.querySelector("#email-success-description");
+const emailSuccessConflicts = document.querySelector("#email-success-conflicts");
+const emailSuccessConflictList = document.querySelector("#email-success-conflict-list");
+const automationErrorDialog = document.querySelector("#automation-error-dialog");
+const automationErrorTitle = document.querySelector("#automation-error-title");
+const automationErrorDescription = document.querySelector("#automation-error-description");
+const dismissAutomationErrorButton = document.querySelector("#dismiss-automation-error");
 let latestRequestIds = [];
 let presentedResultId;
+let automationResultMonitorInitialized = false;
 let trackedAutomationStartedAt;
 let presentedEmailCompletionId;
 let automationRunning = false;
 let automationStartPending = false;
+let automationStartErrorActive = false;
 
 function setAutomationControlsLocked(locked) {
   automationRunning = locked;
@@ -132,6 +143,7 @@ function closeResultDialog() {
 
 function renderAutomationResult(result) {
   latestRequestIds = result.requestIds;
+  const conflicts = Array.isArray(result.conflicts) ? result.conflicts : [];
   if (result.testMode) {
     resultKickerElement.textContent = "Prueba completada";
     resultTitleElement.textContent = "Request ID simulados";
@@ -139,17 +151,36 @@ function renderAutomationResult(result) {
       `Se validaron ${result.favoriteCount} formularios de Favorites sin presionar Submit Request. ` +
       `Estos ${result.requestIds.length} IDs son únicamente datos de prueba.`;
   } else {
-    resultKickerElement.textContent = "Automatización completada";
-    resultTitleElement.textContent = "Request ID obtenidos";
-    resultDescriptionElement.textContent =
-      `Se obtuvieron ${result.favoriteCount} solicitudes de las cuentas favoritas. ` +
-      "Puede copiar los IDs para utilizarlos donde necesite.";
+    resultKickerElement.textContent = conflicts.length
+      ? "Automatización completada con avisos"
+      : "Automatización completada";
+    resultTitleElement.textContent = conflicts.length
+      ? "Resultado de las solicitudes"
+      : "Request ID obtenidos";
+    resultDescriptionElement.textContent = conflicts.length
+      ? `Se obtuvieron ${result.requestIds.length} Request ID. ${conflicts.length} ` +
+        `${conflicts.length === 1 ? "solicitud fue omitida" : "solicitudes fueron omitidas"} ` +
+        "porque el acceso ya estaba aprobado durante el horario solicitado."
+      : `Se obtuvieron ${result.favoriteCount} solicitudes de las cuentas favoritas. ` +
+        "Puede copiar los IDs para utilizarlos donde necesite.";
   }
   resultIdsElement.replaceChildren(...result.requestIds.map((requestId) => {
     const item = document.createElement("li");
     item.textContent = requestId;
     return item;
   }));
+  resultIdsElement.hidden = result.requestIds.length === 0;
+  copyResultButton.disabled = result.requestIds.length === 0;
+  resultConflictListElement.replaceChildren(...conflicts.map((conflict) => {
+    const item = document.createElement("li");
+    const identity = document.createElement("strong");
+    identity.textContent = `${conflict.system} / ${conflict.application}`;
+    const details = document.createElement("span");
+    details.textContent = `${conflict.account} — ${conflict.requestStartDate}`;
+    item.append(identity, details);
+    return item;
+  }));
+  resultConflictsElement.hidden = conflicts.length === 0;
   resultTimeElement.textContent = `Finalizado: ${new Intl.DateTimeFormat("es-EC", {
     dateStyle: "medium",
     timeStyle: "short",
@@ -161,8 +192,10 @@ function renderAutomationStatus(status) {
   if (isRunning && status.startedAt) trackedAutomationStartedAt = status.startedAt;
   testAutomationButton.hidden = !status.testButtonEnabled;
   setAutomationControlsLocked(isRunning || automationStartPending);
-  automationStatusElement.textContent = status.message ?? "";
-  automationStatusElement.dataset.state = status.state;
+  if (!(automationStartErrorActive && status.state === "idle")) {
+    automationStatusElement.textContent = status.message ?? "";
+    automationStatusElement.dataset.state = status.state;
+  }
 
   const completionId = `${status.startedAt ?? ""}:${status.completedAt ?? ""}`;
   if (
@@ -172,6 +205,19 @@ function renderAutomationStatus(status) {
     completionId !== presentedEmailCompletionId
   ) {
     presentedEmailCompletionId = completionId;
+    const conflicts = Array.isArray(status.conflicts) ? status.conflicts : [];
+    emailSuccessDescription.textContent = conflicts.length
+      ? `Outlook aceptó el correo. ${conflicts.length} ` +
+        `${conflicts.length === 1 ? "solicitud fue omitida" : "solicitudes fueron omitidas"} ` +
+        "porque el acceso ya estaba aprobado durante el horario solicitado."
+      : "Outlook aceptó el correo generado por la automatización.";
+    emailSuccessConflictList.replaceChildren(...conflicts.map((conflict) => {
+      const item = document.createElement("li");
+      item.textContent = `${conflict.system} / ${conflict.application} / ${conflict.account} — ` +
+        conflict.requestStartDate;
+      return item;
+    }));
+    emailSuccessConflicts.hidden = conflicts.length === 0;
     if (!emailSuccessDialog.open) emailSuccessDialog.showModal();
   }
 }
@@ -198,6 +244,8 @@ async function startAutomation(mode) {
 
   closeResultDialog();
   if (emailSuccessDialog.open) emailSuccessDialog.close();
+  if (automationErrorDialog.open) automationErrorDialog.close();
+  automationStartErrorActive = false;
   automationStartPending = true;
   setAutomationControlsLocked(true);
   automationStatusElement.textContent =
@@ -215,8 +263,19 @@ async function startAutomation(mode) {
     renderAutomationStatus(result);
   } catch (error) {
     automationStartPending = false;
-    await loadAutomationStatus();
-    automationStatusElement.textContent = error.message || "No fue posible iniciar la automatización.";
+    setAutomationControlsLocked(false);
+    const message = error.message || "No fue posible iniciar la automatización.";
+    const isPastSchedule = /(?:fecha|hora|horario).*(?:pas(?:ó|aron|ado)|anterior)/i.test(message);
+    automationStartErrorActive = true;
+    automationStatusElement.textContent = isPastSchedule
+      ? "Debe corregir la fecha y hora de la solicitud antes de iniciar."
+      : "No fue posible iniciar la automatización.";
+    automationStatusElement.dataset.state = "error";
+    automationErrorTitle.textContent = isPastSchedule
+      ? "La fecha y hora configuradas ya pasaron"
+      : "No se pudo iniciar la automatización";
+    automationErrorDescription.textContent = message;
+    if (!automationErrorDialog.open) automationErrorDialog.showModal();
   }
 }
 
@@ -228,6 +287,11 @@ async function checkAutomationResult() {
     const response = await fetch("/api/automation-result", { cache: "no-store" });
     if (!response.ok) return;
     const result = await response.json();
+    if (!automationResultMonitorInitialized) {
+      automationResultMonitorInitialized = true;
+      presentedResultId = result.available ? result.resultId : undefined;
+      return;
+    }
     if (!result.available || result.resultId === presentedResultId) return;
     presentedResultId = result.resultId;
     renderAutomationResult(result);
@@ -260,8 +324,22 @@ dismissEmailSuccessButton.addEventListener("click", () => emailSuccessDialog.clo
 emailSuccessDialog.addEventListener("click", (event) => {
   if (event.target === emailSuccessDialog) emailSuccessDialog.close();
 });
+dismissAutomationErrorButton.addEventListener("click", () => automationErrorDialog.close());
+automationErrorDialog.addEventListener("click", (event) => {
+  if (event.target === automationErrorDialog) automationErrorDialog.close();
+});
+automationErrorDialog.addEventListener("close", () => {
+  automationStartErrorActive = false;
+  void loadAutomationStatus();
+});
 
-checkAutomationResult();
-window.setInterval(checkAutomationResult, 2000);
-loadAutomationStatus();
-window.setInterval(loadAutomationStatus, 1500);
+async function initializeAutomationMonitoring() {
+  // El resultado persistido al abrir la aplicación es solo la línea base. No
+  // corresponde a una ejecución recién terminada en esta sesión del frontend.
+  await checkAutomationResult();
+  await loadAutomationStatus();
+  window.setInterval(checkAutomationResult, 2000);
+  window.setInterval(loadAutomationStatus, 1500);
+}
+
+initializeAutomationMonitoring();

@@ -9,6 +9,7 @@ import {
   DEFAULT_REASON,
   parseTime12Hour,
   parseDayMonthForEcuador,
+  replacePastDateWithTodayForEcuador,
   splitTime24Hour,
   validateStartTime,
 } from "./request-config.mjs";
@@ -66,14 +67,26 @@ export async function loadRequestSettings(options = {}) {
 
 export async function getRequestSettingsState(options = {}) {
   try {
-    const settings = await loadRequestSettings({
+    let settings = await loadRequestSettings({
       envPath: options.envPath,
       includeProcessEnvironment: false,
     });
-    return { configured: true, settings: settingsForForm(settings) };
+    let dateUpdated = false;
+    if (options.refreshPastDate === true) {
+      const normalizedDate = replacePastDateWithTodayForEcuador(settings.startDate, options.now);
+      dateUpdated = normalizedDate.updated;
+      if (dateUpdated) {
+        settings = { ...settings, startDate: normalizedDate.startDate };
+        await updateProjectEnvironment({
+          PAM_START_DATE: settings.startDate,
+        }, { envPath: options.envPath ?? defaultEnvPath });
+      }
+    }
+    return { configured: true, settings: settingsForForm(settings), dateUpdated };
   } catch {
     return {
       configured: false,
+      dateUpdated: false,
       settings: {
         startDate: "",
         startTime: "",

@@ -63,6 +63,7 @@ test("guarda y recupera la configuración sin modificar credenciales existentes"
   assert.deepEqual(await loadRequestSettings({ envPath }), expected);
   assert.deepEqual(await getRequestSettingsState({ envPath }), {
     configured: true,
+    dateUpdated: false,
     settings: {
       ...expected,
       startTime12: "09:30",
@@ -72,6 +73,32 @@ test("guarda y recupera la configuración sin modificar credenciales existentes"
   const values = await readProjectEnvironment(envPath);
   assert.equal(values.PAM_REQUEST_REASON, expected.reason);
   assert.equal(values.BI_USERNAME, "usuario.prueba");
+});
+
+test("actualiza una fecha pasada al abrir la edición y conserva la hora", async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), "pam-request-date-refresh-"));
+  const envPath = path.join(directory, ".env");
+  await writeRequestSettings({
+    startDate: "31/07",
+    startTime: "09:00",
+    sessionHours: 8,
+    reason: "Soporte programado",
+  }, { envPath });
+
+  const state = await getRequestSettingsState({
+    envPath,
+    refreshPastDate: true,
+    now: new Date("2026-08-01T18:35:00.000Z"),
+  });
+
+  assert.equal(state.dateUpdated, true);
+  assert.equal(state.settings.startDate, "01/08");
+  assert.equal(state.settings.startTime, "09:00");
+  assert.equal(state.settings.startTime12, "09:00");
+  assert.equal(state.settings.startPeriod, "AM");
+  const values = await readProjectEnvironment(envPath);
+  assert.equal(values.PAM_START_DATE, "01/08");
+  assert.equal(values.PAM_START_TIME, "09:00");
 });
 
 test("rechaza duraciones fuera del intervalo permitido", () => {

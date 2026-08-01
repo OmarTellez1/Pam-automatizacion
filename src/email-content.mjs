@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { requestKey } from "./request-config.mjs";
 import { validateSimulatedRequestIds } from "./simulation.mjs";
 
 const projectDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -69,12 +70,12 @@ export function normalizeRequestIds(requestIds, expectedCount) {
   }
 
   const normalized = requestIds.map((value) => String(value).trim());
-  if (normalized.length < 1) {
+  if (normalized.length < 1 && expectedCount !== 0) {
     throw new Error("Se requiere al menos un Request ID.");
   }
   if (expectedCount !== undefined) {
-    if (!Number.isSafeInteger(expectedCount) || expectedCount < 1) {
-      throw new Error("La cantidad de cuentas favoritas no es válida.");
+    if (!Number.isSafeInteger(expectedCount) || expectedCount < 0) {
+      throw new Error("La cantidad esperada de Request ID no es válida.");
     }
     if (normalized.length !== expectedCount) {
       throw new Error(`Se requieren ${expectedCount} Request ID; se encontraron ${normalized.length}.`);
@@ -141,9 +142,17 @@ export function extractValidatedRequestIds(result) {
     throw new Error("El resultado no indica una cantidad válida de cuentas favoritas.");
   }
 
-  const requestIds = normalizeRequestIds(result.requestIds, favoriteCount);
-  if (!Array.isArray(result.pending) || result.pending.length !== favoriteCount) {
-    throw new Error(`El resultado debe contener ${favoriteCount} solicitudes Pending.`);
+  const conflicts = result.conflicts ?? [];
+  if (!Array.isArray(conflicts) || conflicts.length > favoriteCount) {
+    throw new Error("La lista de conflictos de acceso aprobado no es válida.");
+  }
+  if (conflicts.some((conflict) => conflict?.type !== "approved_access_overlap")) {
+    throw new Error("El resultado contiene un tipo de conflicto no reconocido.");
+  }
+  const expectedPendingCount = favoriteCount - conflicts.length;
+  const requestIds = normalizeRequestIds(result.requestIds, expectedPendingCount);
+  if (!Array.isArray(result.pending) || result.pending.length !== expectedPendingCount) {
+    throw new Error(`El resultado debe contener ${expectedPendingCount} solicitudes Pending.`);
   }
   if (result.pending.some((request) => request?.status !== "Pending")) {
     throw new Error("Todas las solicitudes utilizadas para el correo deben estar en estado Pending.");
@@ -151,11 +160,24 @@ export function extractValidatedRequestIds(result) {
 
   const pendingIds = normalizeRequestIds(
     result.pending.map((request) => request?.id),
-    favoriteCount,
+    expectedPendingCount,
   );
   const pendingSet = new Set(pendingIds);
   if (requestIds.some((requestId) => !pendingSet.has(requestId))) {
     throw new Error("Los Request ID no coinciden con las solicitudes Pending.");
+  }
+  if (conflicts.length) {
+    const pendingKeys = new Set(result.pending.map(requestKey));
+    const conflictKeys = new Set(conflicts.map(requestKey));
+    const coveredKeys = new Set([...pendingKeys, ...conflictKeys]);
+    if (
+      pendingKeys.size !== expectedPendingCount ||
+      conflictKeys.size !== conflicts.length ||
+      [...conflictKeys].some((key) => pendingKeys.has(key)) ||
+      coveredKeys.size !== favoriteCount
+    ) {
+      throw new Error("Las solicitudes Pending y los conflictos no cubren Favorites de forma única.");
+    }
   }
   return requestIds;
 }

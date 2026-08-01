@@ -3,14 +3,17 @@ import test from "node:test";
 import {
   applicationFamily,
   expectedReleaseText,
+  filterRequestsByStartDate,
   formatIsoDateAsDayMonthYear,
   formatTime12Hour,
   parseFormattedTime12Hour,
   parseTime12Hour,
   parseDayMonthForEcuador,
   requestKey,
+  replacePastDateWithTodayForEcuador,
   splitTime24Hour,
   validateIsoDate,
+  validateRequestStartNotPast,
   validateStartTime,
 } from "../src/request-config.mjs";
 
@@ -36,6 +39,24 @@ test("construye una clave estable para cuenta y aplicación", () => {
 test("forma la fecha esperada en la tabla de Requests", () => {
   assert.equal(expectedReleaseText("2026-08-01", "10:00"), "Aug 01, 2026, 10:00 AM");
   assert.equal(expectedReleaseText("2026-08-01", "14:00"), "Aug 01, 2026, 2:00 PM");
+});
+
+test("distingue los Pending únicamente por Request Start Date completo", () => {
+  const requests = [
+    { id: "140001", release: "Aug 01, 2026, 7:00 PM", reason: "Prueba controlada" },
+    { id: "140002", release: "Aug 01, 2026, 6:00 PM", reason: "Prueba controlada" },
+    { id: "140003", release: "Aug 02, 2026, 7:00 PM", reason: "Prueba controlada" },
+    { id: "140004", release: "Aug 01, 2026, 7:00 PM", reason: "Otra razón" },
+    { id: "140005", release: "  Aug 01, 2026, 7:00 PM  ", reason: "Prueba   controlada" },
+  ];
+  assert.deepEqual(
+    filterRequestsByStartDate(requests, {
+      date: "2026-08-01",
+      startTime: "19:00",
+      reason: "Prueba controlada",
+    }).map((request) => request.id),
+    ["140001", "140004", "140005"],
+  );
 });
 
 test("añade el año vigente de Ecuador a una fecha dd/mm", () => {
@@ -73,4 +94,36 @@ test("convierte de forma segura entre 12 y 24 horas", () => {
   assert.throws(() => parseTime12Hour("13:00", "PM"), /AM o PM/);
   assert.throws(() => parseTime12Hour("02:00", "XX"), /AM o PM/);
   assert.throws(() => parseFormattedTime12Hour("14:30"), /AM\/PM/);
+});
+
+test("rechaza una fecha y hora que ya pasaron en Ecuador", () => {
+  const now = new Date("2026-08-01T18:35:00.000Z");
+  assert.deepEqual(
+    validateRequestStartNotPast("2026-08-01", "13:35", now),
+    { date: "2026-08-01", startTime: "13:35" },
+  );
+  assert.throws(
+    () => validateRequestStartNotPast("2026-08-01", "10:00", now),
+    /ya pasaron.*America\/Guayaquil/,
+  );
+  assert.deepEqual(
+    validateRequestStartNotPast("2026-08-03", "00:00", now),
+    { date: "2026-08-03", startTime: "00:00" },
+  );
+});
+
+test("reemplaza únicamente una fecha pasada por el día actual de Ecuador", () => {
+  const now = new Date("2026-08-01T18:35:00.000Z");
+  assert.deepEqual(
+    replacePastDateWithTodayForEcuador("31/07", now),
+    { startDate: "01/08", updated: true },
+  );
+  assert.deepEqual(
+    replacePastDateWithTodayForEcuador("01/08", now),
+    { startDate: "01/08", updated: false },
+  );
+  assert.deepEqual(
+    replacePastDateWithTodayForEcuador("02/08", now),
+    { startDate: "02/08", updated: false },
+  );
 });
