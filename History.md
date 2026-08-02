@@ -313,6 +313,14 @@ Durante el desarrollo, un agente nunca debe ejecutar `INICIAR_AUTOMATIZACION.cmd
 - El adjunto inline conserva las propiedades necesarias `Content-ID` y tipo MIME; se retiraron `PR_ATTACH_FLAGS` y `AttachmentHidden` porque solo controlaban su presentación cosmética y no deben impedir el envío.
 - Las 14 solicitudes `140311`–`140324` permanecieron reconocidas en `Pending`; el fallo ocurrió antes de llamar a `Send()`.
 
+### 31. Jerarquía visual y animación de ejecución
+
+- El toggle de resultado final reemplazó al distintivo `Solo en este equipo` en la esquina derecha del encabezado y usa textos compactos.
+- `Iniciar automatización` pasó a ser el botón azul principal, más grande y exactamente centrado; el botón de prueba ocupa el espacio izquierdo cuando está habilitado y no desplaza el centro cuando falta.
+- Los tres accesos de configuración se movieron a una fila inferior de botones blancos más pequeños.
+- Durante el proceso aparece un spinner; los estados finales animan un visto verde o una X roja y vuelven a habilitar todos los controles.
+- La validación visible comprobó ambas variantes del layout, el bloqueo durante la ejecución y las transiciones simuladas de éxito y error sin abrir PAM.
+
 ### 7. Migración y Git
 
 - El proyecto se copió íntegramente desde el directorio generado por Codex a `C:\pam automatizacion`.

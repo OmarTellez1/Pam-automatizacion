@@ -17,37 +17,44 @@
             <small>BeyondInsight Password Safe</small>
           </span>
         </a>
-        <span class="local-badge"><span aria-hidden="true"></span> Solo en este equipo</span>
+        <button id="final-action-toggle" class="button button-toggle header-action-toggle" type="button"
+          aria-pressed="false" data-action="web" disabled>
+          <span id="final-action-label">Mostrar IDs al final</span>
+          <span class="toggle-track" aria-hidden="true"><span></span></span>
+        </button>
       </header>
 
       <section class="home-actions" aria-labelledby="page-title">
         <h1 id="page-title" class="visually-hidden">Acciones de Accesos PAM</h1>
         <div class="actions" aria-label="Acciones disponibles">
-          <a class="button button-primary" href="/credenciales">
-            <span id="credentials-action-label">Configurar credenciales</span>
-            <span aria-hidden="true">→</span>
-          </a>
-          <a class="button button-neutral" href="/solicitud">
-            <span id="request-action-label">Configurar solicitud</span>
-            <span aria-hidden="true">→</span>
-          </a>
-          <a class="button button-neutral" href="/correo">
-            <span id="mail-action-label">Configurar envío de correo</span>
-            <span aria-hidden="true">→</span>
-          </a>
-          <button id="final-action-toggle" class="button button-toggle" type="button"
-            aria-pressed="false" data-action="web" disabled>
-            <span id="final-action-label">Se mostrarán los IDs en esta interfaz al final</span>
-            <span class="toggle-track" aria-hidden="true"><span></span></span>
-          </button>
-          <button id="test-automation-button" class="button button-test" type="button" hidden disabled>
-            <span>Iniciar prueba</span>
-            <small>Sin Submit Request</small>
-          </button>
-          <button id="real-automation-button" class="button button-danger" type="button" disabled>
-            <span>Iniciar automatización</span>
-            <small>Crea solicitudes reales</small>
-          </button>
+          <div class="automation-launchers">
+            <button id="test-automation-button" class="button button-test" type="button" hidden disabled>
+              <span>Iniciar prueba</span>
+              <small>Sin Submit Request</small>
+            </button>
+            <button id="real-automation-button" class="button button-run" type="button" disabled>
+              Iniciar automatización
+            </button>
+          </div>
+          <div id="automation-progress" class="automation-progress" data-state="idle"
+            role="status" aria-live="polite" aria-hidden="true">
+            <span class="automation-progress-symbol" aria-hidden="true"></span>
+            <span id="automation-progress-label"></span>
+          </div>
+          <nav class="configuration-actions" aria-label="Configuración">
+            <a class="button button-neutral" href="/credenciales">
+              <span id="credentials-action-label">Configurar credenciales</span>
+              <span aria-hidden="true">→</span>
+            </a>
+            <a class="button button-neutral" href="/solicitud">
+              <span id="request-action-label">Configurar solicitud</span>
+              <span aria-hidden="true">→</span>
+            </a>
+            <a class="button button-neutral" href="/correo">
+              <span id="mail-action-label">Configurar envío de correo</span>
+              <span aria-hidden="true">→</span>
+            </a>
+          </nav>
         </div>
         <p id="final-action-status" class="visually-hidden" role="status" aria-live="polite"></p>
       </section>
@@ -104,7 +111,7 @@
 
     <dialog id="automation-error-dialog" class="result-dialog error-dialog"
       aria-labelledby="automation-error-title" aria-describedby="automation-error-description">
-      <span class="error-dialog-icon" aria-hidden="true">!</span>
+      <span class="error-dialog-icon" aria-hidden="true">×</span>
       <span id="automation-error-kicker" class="result-kicker error-kicker">Automatización con problemas</span>
       <h2 id="automation-error-title">No se pudo completar la automatización</h2>
       <p id="automation-error-description" class="result-description"></p>
@@ -119,7 +126,7 @@
 
     <dialog id="outlook-required-dialog" class="result-dialog error-dialog"
       aria-labelledby="outlook-required-title" aria-describedby="outlook-required-description">
-      <span class="error-dialog-icon" aria-hidden="true">!</span>
+      <span class="error-dialog-icon" aria-hidden="true">×</span>
       <span class="result-kicker error-kicker">Outlook no configurado</span>
       <h2 id="outlook-required-title">No puede activar el envío por Outlook</h2>
       <p id="outlook-required-description" class="result-description">
