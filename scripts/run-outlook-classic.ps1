@@ -124,6 +124,7 @@ try {
     $reusedDraft = $false
     $mail = $outlook.CreateItem(0)
     $mail.SendUsingAccount = $account
+
     $mail.To = (@($manifest.toRecipients) -join ';')
     $mail.CC = (@($manifest.ccRecipients) -join ';')
     $mail.Subject = [string]$manifest.subject
@@ -135,14 +136,24 @@ try {
             $propertyAccessor = $attachment.PropertyAccessor
             $propertyAccessor.SetProperty('http://schemas.microsoft.com/mapi/proptag/0x3712001F', [string]$inlineImage.contentId)
             $propertyAccessor.SetProperty('http://schemas.microsoft.com/mapi/proptag/0x370E001F', [string]$inlineImage.mimeType)
-            $propertyAccessor.SetProperty('http://schemas.microsoft.com/mapi/proptag/0x37140003', 4)
-            $propertyAccessor.SetProperty('http://schemas.microsoft.com/mapi/proptag/0x7FFE000B', $true)
+            # Content-ID y MIME son suficientes para que el HTML haga referencia
+            # a la imagen. Algunas versiones o políticas de Outlook bloquean las
+            # propiedades MAPI opcionales para ocultar el adjunto; no se intentan
+            # establecer porque no deben impedir el envío del correo.
         } finally {
             if ($propertyAccessor) { [void][Runtime.InteropServices.Marshal]::ReleaseComObject($propertyAccessor) }
             if ($attachment) { [void][Runtime.InteropServices.Marshal]::ReleaseComObject($attachment) }
         }
     }
+    # La firma, si se desea, forma parte del contenido configurado desde la web.
+    # No se inicializa el Inspector ni se concatena la firma automática de Outlook.
     $mail.HTMLBody = $htmlBody
+    $composedHtml = [string]$mail.HTMLBody
+    foreach ($requestId in @($manifest.requestIds)) {
+        if (-not $composedHtml.Contains([string]$requestId)) {
+            throw "Outlook eliminó el Request ID $requestId al preparar el mensaje. No se enviará."
+        }
+    }
 
     if ($Send) {
         $mail.Send()

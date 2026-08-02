@@ -92,7 +92,7 @@ Las preguntas son:
 
 La fecha acepta únicamente día y mes, por ejemplo `01/08`. El año se añade automáticamente usando el año vigente en Ecuador. La hora técnica usa 24 horas: `14:00` se asigna al `input[type="time"]` del portal y Chrome lo muestra visualmente como `02:00 PM`.
 
-El resultado final ya no se pregunta en la terminal. Si el toggle indica correo, al finalizar una ejecución se muestra un diálogo pequeño que confirma el envío y permite cerrarlo. Si indica interfaz web, la portada detecta un resultado nuevo en `run-results\last-run.json` y abre automáticamente un diálogo con todos los IDs y un botón para copiarlos. El resultado que ya existía al abrir o reiniciar la interfaz se registra como visto y no vuelve a abrir el diálogo. Mientras una ejecución está activa, todos los controles de la portada permanecen deshabilitados y el aviso indica que se habilitarán al terminar, tanto con éxito como con error. Si el inicio se rechaza porque la fecha y hora ya pasaron, la portada mantiene abierto un diálogo claro con acceso directo a `Editar solicitud`; el sondeo del estado no lo reemplaza por el mensaje de espera. `INICIAR_INTERFAZ.cmd` debe permanecer abierto para mostrar el resultado.
+El resultado final ya no se pregunta en la terminal. Si el toggle indica correo, al finalizar una ejecución se muestra un diálogo pequeño que confirma el envío y permite cerrarlo. Si indica interfaz web, la portada detecta un resultado nuevo en `run-results\last-run.json` y abre automáticamente un diálogo con todos los IDs y un botón para copiarlos. El resultado que ya existía al abrir o reiniciar la interfaz se registra como visto y no vuelve a abrir el diálogo. Mientras una ejecución está activa, todos los controles de la portada permanecen deshabilitados hasta terminar. Los errores aparecen en un cuadro descartable y no en una línea debajo de los botones. Si el inicio se rechaza porque la fecha y hora ya pasaron, el cuadro ofrece acceso directo a `Editar solicitud`. `INICIAR_INTERFAZ.cmd` debe permanecer abierto para mostrar el resultado.
 
 La interfaz elimina los espacios al inicio y al final de cada respuesta. Si una respuesta está vacía o no tiene el formato correcto, muestra el motivo y repite la misma pregunta. No continúa hasta recibir fecha y hora válidas. Para cancelar voluntariamente, presione `Ctrl+C`; el proceso mostrará el mensaje de cancelación y no iniciará o detendrá la automatización.
 
@@ -132,6 +132,8 @@ Existe un modo técnico deliberadamente limitado para validar un único envío s
 
 El proceso abre Outlook clásico mediante COM y busca exactamente una cuenta cuyo `SmtpAddress` coincida con `PAM_MAIL_SENDER`. Usa la sesión de Outlook ya iniciada por cada usuario; no almacena la contraseña de Outlook, no usa coordenadas y no controla visualmente la pantalla. Si la cuenta no existe o aparece más de una coincidencia, el envío se detiene con un error.
 
+Outlook recibe únicamente el contenido configurado en `Editar envío de correo`; la automatización no carga ni concatena la firma predeterminada de Outlook. Si se desea incluir una firma, debe copiarse dentro del editor web junto con el resto del mensaje. El guardado conserva su formato e imágenes mediante los mismos adjuntos inline usados para cualquier imagen pegada.
+
 En `Configurar credenciales`, el botón de Outlook comprueba que Outlook clásico pueda abrirse, que exista exactamente esa cuenta en el perfil y que pueda asignarse como remitente. Para esta comprobación crea un mensaje temporal y lo descarta, sin enviarlo; el valor solo se guarda si la prueba termina correctamente. `Enviar correo de prueba` solicita confirmación y envía un mensaje a la misma cuenta configurada. Antes de iniciar una automatización cuyo resultado sea correo, la aplicación repite la comprobación de Outlook para evitar abrir PAM cuando el cliente o la sesión no están disponibles.
 
 ### Configurar destinatarios y contenido
@@ -139,6 +141,8 @@ En `Configurar credenciales`, el botón de Outlook comprueba que Outlook clásic
 Abra `INICIAR_INTERFAZ.cmd`, seleccione `Configurar credenciales` y verifique primero la cuenta remitente en el panel de Outlook. Después abra `Configurar envío de correo`: `Para` requiere al menos una dirección; tanto `Para` como `CC` aceptan listas separadas por `;`. Las direcciones se validan, no pueden repetirse y una dirección de `Para` no puede aparecer nuevamente en `CC`.
 
 El campo de contenido aparece vacío hasta que el usuario escriba y guarde su propio mensaje. Admite texto con formato, tablas e imágenes pegadas desde el portapapeles. La política local permite estilos en línea para representar ese formato, pero mantiene bloqueados scripts, objetos, marcos y conexiones externas; además, el servidor sanea el HTML al guardar. Las imágenes se guardan como datos locales y, al preparar el mensaje, se convierten en adjuntos inline con identificadores CID para que Outlook clásico las muestre dentro del cuerpo.
+
+Para cada imagen inline se asignan únicamente su `Content-ID` y tipo MIME. No se escriben las propiedades MAPI opcionales `PR_ATTACH_FLAGS` o `AttachmentHidden`, porque ciertas instalaciones de Outlook las bloquean y esa característica cosmética no debe detener el envío.
 
 Use el botón `Insertar {{REQUEST_IDS}}` para colocar el marcador en la posición actual del cursor. El formulario rechaza contenido sin marcador o con más de uno. Las configuraciones anteriores que tenían IDs escritos en la celda `Solicitudes de PAM` se migran al marcador al cargarlas.
 
@@ -155,6 +159,8 @@ Sin `-Display`, el borrador se guarda en Outlook sin abrir la ventana. Para envi
 ```
 
 Antes de crear o enviar, el script regenera el correo desde `run-results\last-run.json`, exige un ID único por cuenta favorita y comprueba que coincidan con las solicitudes `Pending`. Inmediatamente antes de `Send()` vuelve a comprobar el hash del cuerpo y todos los IDs; en modo de prueba exige exactamente la lista simulada autorizada. Siempre crea un mensaje nuevo, sin recuperar borradores anteriores. `-Send` bloquea un segundo envío del mismo conjunto de ID; `-Force` permite un reenvío deliberado.
+
+El envío asigna directamente el HTML ya validado y llama a `Send()` usando la cuenta configurada, sin inicializar el Inspector ni guardar antes un borrador. Esto conserva el flujo que enviaba correctamente antes de incorporar la firma automática. La portada muestra cualquier error en un cuadro descartable; un correo duplicado, por ejemplo, se informa como `Estos Request ID ya fueron enviados`.
 
 La integridad se calcula directamente sobre los bytes UTF-8 del HTML, evitando que Windows PowerShell 5 altere tildes u otros caracteres al convertir el contenido. `scripts\run-outlook-classic.ps1 -ValidateOnly` regenera y valida manifiesto, hash, marcador e IDs sin abrir Outlook, crear borradores ni enviar mensajes.
 

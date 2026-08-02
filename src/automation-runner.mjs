@@ -35,6 +35,38 @@ export function createAutomationLogPath(mode, date = new Date()) {
   return path.join(automationLogsDirectory, `automation-${mode}-${timestamp}.log`);
 }
 
+function repairPowerShellText(value) {
+  if (!/[ÃÂ]/.test(value)) return value;
+  try {
+    return Buffer.from(value, "latin1").toString("utf8");
+  } catch {
+    return value;
+  }
+}
+
+export function extractAutomationErrorMessage(stderr, exitCode) {
+  const lines = repairPowerShellText(stderr)
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const text = lines.join("\n");
+
+  if (/mismo conjunto de Request ID ya fue enviado/i.test(text)) {
+    return "Ya existe un correo enviado con estos mismos Request ID. Outlook no envió un duplicado.";
+  }
+  if (/valor no est[aá] dentro del intervalo esperado/i.test(text)) {
+    return "Outlook no pudo enviar el correo porque rechazó el mensaje preparado. Revise el borrador guardado en Outlook e inténtelo nuevamente.";
+  }
+
+  const usefulLines = lines
+    .map((line) => line.replace(/^.+?\.ps1\s*:\s*/i, ""))
+    .filter((line) => !/^(?:En |At |\+|CategoryInfo\s*:|FullyQualifiedErrorId\s*:)/i.test(line));
+  const diagnostic = usefulLines.find((line) =>
+    /(?:fallido|no pudo|no se |ya existe|ya fue|Outlook|PAM|correo|solicitud)/i.test(line)
+  );
+  return diagnostic ?? `La automatización terminó con código ${exitCode}.`;
+}
+
 export async function runPowerShellAutomation(mode, options = {}) {
   const modeArgument = mode === "real" ? "-Execute" : "-TestRun";
   const logPath = options.logPath ?? createAutomationLogPath(mode);
@@ -79,9 +111,7 @@ export async function runPowerShellAutomation(mode, options = {}) {
         finish();
         return;
       }
-      const lines = stderr.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-      const diagnostic = lines.find((line) => /(?:syntaxerror|error:|exception|fallido)/i.test(line));
-      finish(new Error(diagnostic ?? `La automatización terminó con código ${code}.`));
+      finish(new Error(extractAutomationErrorMessage(stderr, code)));
     });
   });
 }
@@ -214,6 +244,7 @@ export function createAutomationController(options = {}) {
             ...status,
             state: "failed",
             completedAt: new Date().toISOString(),
+            errorMessage: error.message,
             message: `La automatización terminó con error: ${error.message} Log: ${logFile}`,
           };
         });

@@ -167,16 +167,6 @@ a { color: inherit; }
 }
 [hidden] { display: none !important; }
 
-.automation-status {
-  width: min(100%, 560px);
-  min-height: 1.4em;
-  margin: 18px auto 0;
-  color: var(--muted);
-  text-align: center;
-  font-size: 0.84rem;
-  line-height: 1.45;
-}
-
 .button-neutral {
   color: var(--ink);
   background: rgba(255, 255, 255, 0.9);

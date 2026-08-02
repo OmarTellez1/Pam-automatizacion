@@ -6,7 +6,6 @@ const finalActionLabel = document.querySelector("#final-action-label");
 const finalActionStatus = document.querySelector("#final-action-status");
 const testAutomationButton = document.querySelector("#test-automation-button");
 const realAutomationButton = document.querySelector("#real-automation-button");
-const automationStatusElement = document.querySelector("#automation-status");
 const resultDialog = document.querySelector("#automation-result-dialog");
 const resultKickerElement = document.querySelector("#automation-result-kicker");
 const resultTitleElement = document.querySelector("#automation-result-title");
@@ -26,8 +25,10 @@ const emailSuccessDescription = document.querySelector("#email-success-descripti
 const emailSuccessConflicts = document.querySelector("#email-success-conflicts");
 const emailSuccessConflictList = document.querySelector("#email-success-conflict-list");
 const automationErrorDialog = document.querySelector("#automation-error-dialog");
+const automationErrorKicker = document.querySelector("#automation-error-kicker");
 const automationErrorTitle = document.querySelector("#automation-error-title");
 const automationErrorDescription = document.querySelector("#automation-error-description");
+const automationErrorEditRequest = document.querySelector("#automation-error-edit-request");
 const dismissAutomationErrorButton = document.querySelector("#dismiss-automation-error");
 const outlookRequiredDialog = document.querySelector("#outlook-required-dialog");
 const outlookRequiredDescription = document.querySelector("#outlook-required-description");
@@ -38,9 +39,10 @@ let presentedResultId;
 let automationResultMonitorInitialized = false;
 let trackedAutomationStartedAt;
 let presentedEmailCompletionId;
+let presentedFailureId;
+let automationStatusMonitorInitialized = false;
 let automationRunning = false;
 let automationStartPending = false;
-let automationStartErrorActive = false;
 let outlookResetRequired = false;
 
 function setAutomationControlsLocked(locked) {
@@ -244,17 +246,72 @@ function renderAutomationResult(result) {
   }).format(new Date(result.completedAt))}`;
 }
 
+function describeAutomationError(rawMessage, didStart = true) {
+  const message = String(rawMessage || "No fue posible completar la automatización.")
+    .replace(/^La automatización terminó con error:\s*/i, "")
+    .replace(/\s+Log:\s+.+$/i, "")
+    .trim();
+
+  if (/mismo conjunto de Request ID|correo enviado con estos mismos Request ID/i.test(message)) {
+    return {
+      kicker: "Correo duplicado evitado",
+      title: "Estos Request ID ya fueron enviados",
+      description:
+        "Ya existe un correo enviado con estos mismos Request ID. Para evitar un duplicado, Outlook no envió otro correo.",
+      canEditRequest: false,
+    };
+  }
+  if (/(?:fecha|hora|horario).*(?:pas(?:ó|aron|ado)|anterior)/i.test(message)) {
+    return {
+      kicker: "Configuración no válida",
+      title: "La fecha y hora configuradas ya pasaron",
+      description: message,
+      canEditRequest: true,
+    };
+  }
+  if (/Outlook no pudo enviar|intervalo esperado|rechazó el mensaje preparado/i.test(message)) {
+    return {
+      kicker: "Problema con Outlook",
+      title: "No se pudo enviar el correo",
+      description: message,
+      canEditRequest: false,
+    };
+  }
+  return {
+    kicker: didStart ? "Automatización con problemas" : "No se inició la automatización",
+    title: didStart ? "No se pudo completar la automatización" : "No se pudo iniciar la automatización",
+    description: message,
+    canEditRequest: false,
+  };
+}
+
+function showAutomationError(rawMessage, didStart = true) {
+  const error = describeAutomationError(rawMessage, didStart);
+  automationErrorKicker.textContent = error.kicker;
+  automationErrorTitle.textContent = error.title;
+  automationErrorDescription.textContent = error.description;
+  automationErrorEditRequest.hidden = !error.canEditRequest;
+  if (!automationErrorDialog.open) automationErrorDialog.showModal();
+}
+
 function renderAutomationStatus(status) {
   const isRunning = status.state === "running";
   if (isRunning && status.startedAt) trackedAutomationStartedAt = status.startedAt;
   testAutomationButton.hidden = !status.testButtonEnabled;
   setAutomationControlsLocked(isRunning || automationStartPending);
-  if (!(automationStartErrorActive && status.state === "idle")) {
-    automationStatusElement.textContent = status.message ?? "";
-    automationStatusElement.dataset.state = status.state;
-  }
 
   const completionId = `${status.startedAt ?? ""}:${status.completedAt ?? ""}`;
+  if (!automationStatusMonitorInitialized) {
+    automationStatusMonitorInitialized = true;
+    if (status.state === "failed") presentedFailureId = completionId;
+  } else if (
+    status.state === "failed" &&
+    status.startedAt === trackedAutomationStartedAt &&
+    completionId !== presentedFailureId
+  ) {
+    presentedFailureId = completionId;
+    showAutomationError(status.errorMessage ?? status.message, true);
+  }
   if (
     status.state === "completed" &&
     status.emailSent === true &&
@@ -288,7 +345,9 @@ async function loadAutomationStatus() {
     testAutomationButton.hidden = true;
     testAutomationButton.disabled = true;
     realAutomationButton.disabled = true;
-    automationStatusElement.textContent = "No fue posible consultar el estado de la automatización.";
+    if (trackedAutomationStartedAt && !automationErrorDialog.open) {
+      showAutomationError("No fue posible consultar el estado actual de la automatización.", true);
+    }
   }
 }
 
@@ -302,11 +361,8 @@ async function startAutomation(mode) {
   closeResultDialog();
   if (emailSuccessDialog.open) emailSuccessDialog.close();
   if (automationErrorDialog.open) automationErrorDialog.close();
-  automationStartErrorActive = false;
   automationStartPending = true;
   setAutomationControlsLocked(true);
-  automationStatusElement.textContent =
-    "Iniciando automatización… Todos los botones se habilitarán nuevamente cuando termine con éxito o con error.";
   try {
     const response = await fetch("/api/automation/start", {
       method: "POST",
@@ -318,21 +374,14 @@ async function startAutomation(mode) {
     automationStartPending = false;
     trackedAutomationStartedAt = result.startedAt;
     renderAutomationStatus(result);
+    if (result.state === "failed" && !automationErrorDialog.open) {
+      presentedFailureId = `${result.startedAt ?? ""}:${result.completedAt ?? ""}`;
+      showAutomationError(result.errorMessage ?? result.message, true);
+    }
   } catch (error) {
     automationStartPending = false;
     setAutomationControlsLocked(false);
-    const message = error.message || "No fue posible iniciar la automatización.";
-    const isPastSchedule = /(?:fecha|hora|horario).*(?:pas(?:ó|aron|ado)|anterior)/i.test(message);
-    automationStartErrorActive = true;
-    automationStatusElement.textContent = isPastSchedule
-      ? "Debe corregir la fecha y hora de la solicitud antes de iniciar."
-      : "No fue posible iniciar la automatización.";
-    automationStatusElement.dataset.state = "error";
-    automationErrorTitle.textContent = isPastSchedule
-      ? "La fecha y hora configuradas ya pasaron"
-      : "No se pudo iniciar la automatización";
-    automationErrorDescription.textContent = message;
-    if (!automationErrorDialog.open) automationErrorDialog.showModal();
+    showAutomationError(error.message, false);
   }
 }
 
@@ -396,10 +445,6 @@ configureOutlookLink.addEventListener("click", async (event) => {
 dismissAutomationErrorButton.addEventListener("click", () => automationErrorDialog.close());
 automationErrorDialog.addEventListener("click", (event) => {
   if (event.target === automationErrorDialog) automationErrorDialog.close();
-});
-automationErrorDialog.addEventListener("close", () => {
-  automationStartErrorActive = false;
-  void loadAutomationStatus();
 });
 
 async function initializeAutomationMonitoring() {

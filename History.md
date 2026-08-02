@@ -285,6 +285,34 @@ Durante el desarrollo, un agente nunca debe ejecutar `INICIAR_AUTOMATIZACION.cmd
 - Una comprobación visible y de solo lectura recorrió las dos páginas reales: leyó las 29 filas, ignoró 15 solicitudes ajenas y encontró exactamente 14 para `01/08/2026 7:00 PM`: `140266` y `140284`–`140296`. No abrió formularios ni creó solicitudes.
 - La suite completa quedó en 85 pruebas aprobadas, incluidas etiquetas válidas e inválidas del paginador.
 
+### 27. Conservación de la firma predeterminada de Outlook
+
+- `Outlook.Application.CreateItem(0)` no incorpora por sí solo la firma que aparece al pulsar `Correo nuevo`, y la asignación directa de `HTMLBody` reemplazaba cualquier contenido inicial.
+- Una comprobación COM segura confirmó que `GetInspector.WordEditor` inicializa silenciosamente la misma firma configurada: produjo HTML e imágenes equivalentes a `Display()` sin mostrar el mensaje. Los dos mensajes temporales usados para comparar métodos fueron descartados y no se enviaron.
+- El envío ahora selecciona primero `SendUsingAccount`, inicializa el Inspector, captura la firma y sus adjuntos, y coloca el contenido de PAM antes de ella. Después exige conservar todos los Request ID, el texto normalizado de la firma y al menos sus adjuntos originales.
+- Si Outlook no inserta una firma significativa, el flujo se detiene antes de `Send()`. `-ValidateSignature` permite construir el correo completo y descartarlo para comprobar la integración sin enviar ni guardar un borrador.
+
+### 28. Errores de automatización en cuadros y entrega estable a Outlook
+
+- Se eliminó el mensaje de estado visible que aparecía debajo de los botones de la portada.
+- Los fallos tanto al iniciar como durante la ejecución se muestran en un cuadro descartable con una causa limpia, sin trazas `CategoryInfo` de PowerShell.
+- El bloqueo de reenvío se presenta específicamente como un correo ya enviado con los mismos Request ID.
+- Outlook resuelve `Para` y `CC`, guarda el mensaje compuesto y luego ejecuta `Send()`; si la entrega falla, conserva el borrador para revisión.
+- La comprobación segura con `-ValidateSignature` confirmó contenido, firma y destinatarios y descartó el mensaje temporal sin enviarlo.
+
+### 29. Firma administrada desde el contenido del correo
+
+- La integración de la firma predeterminada mediante `GetInspector.WordEditor` dejó grandes espacios antes de la firma y provocó que Outlook rechazara `Send()` aunque el mensaje quedara en Borradores.
+- Por decisión del usuario se retiraron la inicialización del Inspector, la concatenación de la firma, el guardado previo y `-ValidateSignature`.
+- El envío vuelve al flujo directo que ya funcionaba: asigna el HTML configurado a `HTMLBody` y llama a `Send()` sin crear primero un borrador.
+- La firma pasa a ser parte opcional del contenido persistente de `Editar envío de correo`, donde puede pegarse con su formato e imágenes.
+
+### 30. Compatibilidad de imágenes inline con Outlook restringido
+
+- El primer reintento con la firma pegada llegó correctamente hasta la creación del adjunto, pero Outlook rechazó la propiedad MAPI opcional `PR_ATTACH_FLAGS` (`0x37140003`) con `UnauthorizedAccessException`.
+- El adjunto inline conserva las propiedades necesarias `Content-ID` y tipo MIME; se retiraron `PR_ATTACH_FLAGS` y `AttachmentHidden` porque solo controlaban su presentación cosmética y no deben impedir el envío.
+- Las 14 solicitudes `140311`–`140324` permanecieron reconocidas en `Pending`; el fallo ocurrió antes de llamar a `Send()`.
+
 ### 7. Migración y Git
 
 - El proyecto se copió íntegramente desde el directorio generado por Codex a `C:\pam automatizacion`.

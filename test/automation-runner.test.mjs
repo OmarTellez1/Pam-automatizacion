@@ -3,7 +3,10 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { createAutomationController } from "../src/automation-runner.mjs";
+import {
+  createAutomationController,
+  extractAutomationErrorMessage,
+} from "../src/automation-runner.mjs";
 import { updateProjectEnvironment } from "../src/env-config.mjs";
 import { formatAutomationEmailSubject } from "../src/simulation.mjs";
 
@@ -105,9 +108,33 @@ test("publica el error exacto y la ruta del log para la interfaz", async () => {
   await new Promise((resolve) => setImmediate(resolve));
   const status = await controller.getStatus();
   assert.equal(status.state, "failed");
+  assert.equal(status.errorMessage, "Selector Favorites no encontrado.");
   assert.match(status.message, /Selector Favorites no encontrado/);
   assert.match(status.message, /logs[\\/]automation-test-/);
   assert.match(status.logFile, /^logs[\\/]automation-test-/);
+});
+
+test("traduce el bloqueo de correo duplicado a un mensaje útil", () => {
+  const stderr = [
+    "Este mismo conjunto de Request ID ya fue enviado. Use -Force solo si el reenvío es intencional.",
+    "+ CategoryInfo : OperationStopped",
+  ].join("\n");
+  assert.equal(
+    extractAutomationErrorMessage(stderr, 1),
+    "Ya existe un correo enviado con estos mismos Request ID. Outlook no envió un duplicado.",
+  );
+});
+
+test("traduce el error genérico de Outlook sin mostrar trazas de PowerShell", () => {
+  const stderr = [
+    "C:\\pam automatizacion\\scripts\\run-outlook-classic.ps1 : El valor no está dentro del intervalo esperado.",
+    "En C:\\pam automatizacion\\scripts\\run-access-requests.ps1: 103 Carácter: 17",
+    "+ CategoryInfo : OperationStopped: (:) [run-outlook-classic.ps1], ArgumentException",
+  ].join("\n");
+  assert.equal(
+    extractAutomationErrorMessage(stderr, 1),
+    "Outlook no pudo enviar el correo porque rechazó el mensaje preparado. Revise el borrador guardado en Outlook e inténtelo nuevamente.",
+  );
 });
 
 test("informa el bloqueo temporal y confirma el correo al completar", async () => {

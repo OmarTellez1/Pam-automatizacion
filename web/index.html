@@ -50,7 +50,6 @@
           </button>
         </div>
         <p id="final-action-status" class="visually-hidden" role="status" aria-live="polite"></p>
-        <p id="automation-status" class="automation-status" role="status" aria-live="polite"></p>
       </section>
     </main>
 
@@ -106,11 +105,12 @@
     <dialog id="automation-error-dialog" class="result-dialog error-dialog"
       aria-labelledby="automation-error-title" aria-describedby="automation-error-description">
       <span class="error-dialog-icon" aria-hidden="true">!</span>
-      <span class="result-kicker error-kicker">No se inició la automatización</span>
-      <h2 id="automation-error-title">La fecha y hora configuradas ya pasaron</h2>
+      <span id="automation-error-kicker" class="result-kicker error-kicker">Automatización con problemas</span>
+      <h2 id="automation-error-title">No se pudo completar la automatización</h2>
       <p id="automation-error-description" class="result-description"></p>
       <div class="result-dialog-actions">
-        <a class="button button-primary result-button" href="/solicitud">Editar solicitud</a>
+        <a id="automation-error-edit-request" class="button button-primary result-button"
+          href="/solicitud" hidden>Editar solicitud</a>
         <button id="dismiss-automation-error" class="button button-neutral result-button" type="button">
           Cerrar
         </button>
