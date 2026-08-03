@@ -8,16 +8,6 @@ import { validateSimulatedRequestIds } from "./simulation.mjs";
 const projectDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const htmlOutputPath = path.join(projectDirectory, "run-results", "CORREO_ACCESOS_PAM.html");
 export const REQUEST_IDS_PLACEHOLDER = "{{REQUEST_IDS}}";
-const reasonPlaceholder = "{{REQUEST_REASON}}";
-
-function escapeHtml(value) {
-  return String(value ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-}
 
 function cellText(html) {
   return String(html)
@@ -101,21 +91,13 @@ export function migrateLegacyRequestIdsPlaceholder(template) {
   ) ?? html;
 }
 
-export function renderAccessEmailHtml(template, requestIds, options = {}) {
+export function renderAccessEmailHtml(template, requestIds) {
   const normalized = normalizeRequestIds(requestIds);
   const renderedIds = normalized.join("<br>\n");
   let html = String(template ?? "");
 
   requireSingleRequestIdsPlaceholder(html);
   html = html.replace(REQUEST_IDS_PLACEHOLDER, renderedIds);
-
-  const reason = String(options.requestReason ?? "").trim();
-  if (html.includes(reasonPlaceholder)) {
-    html = html.replaceAll(reasonPlaceholder, escapeHtml(reason));
-  } else if (reason) {
-    const replaced = replaceFollowingTableCell(html, "motivo del acceso", escapeHtml(reason));
-    if (replaced !== null) html = replaced;
-  }
   return html;
 }
 
@@ -214,7 +196,7 @@ export async function materializeInlineImages(html, options = {}) {
 }
 
 export async function generateAccessEmailArtifacts(requestIds, options = {}) {
-  const html = renderAccessEmailHtml(options.htmlTemplate, requestIds, options);
+  const html = renderAccessEmailHtml(options.htmlTemplate, requestIds);
   await mkdir(path.dirname(htmlOutputPath), { recursive: true });
   await writeFile(htmlOutputPath, html, "utf8");
   return { htmlPath: htmlOutputPath };

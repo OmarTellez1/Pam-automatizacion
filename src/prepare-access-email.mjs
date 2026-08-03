@@ -26,7 +26,6 @@ export async function prepareAccessEmail() {
 
   const artifacts = await generateAccessEmailArtifacts(requestIds, {
     htmlTemplate: contentHtml,
-    requestReason: result.reason,
   });
   const originalHtml = await readFile(artifacts.htmlPath, "utf8");
   const converted = await materializeInlineImages(originalHtml);

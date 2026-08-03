@@ -101,13 +101,16 @@ test("acepta IDs simulados solo en un resultado de prueba completo", () => {
   );
 });
 
-test("actualiza los ID y el motivo en una tabla pegada", () => {
-  const html = '<table><tr><td style="font-weight:bold">Solicitudes de <strong>PAM</strong></td><td>{{REQUEST_IDS}}</td></tr><tr><td>Motivo del acceso</td><td>anterior</td></tr></table>';
-  const result = renderAccessEmailHtml(html, ids, { requestReason: "Razón <segura>" });
+test("actualiza solo los ID y conserva el motivo configurado en el correo", () => {
+  const html = '<table><tr><td style="font-weight:bold">Solicitudes de <strong>PAM</strong></td><td>{{REQUEST_IDS}}</td></tr><tr><td>Motivo del acceso</td><td>Motor de crédito masivo</td></tr></table>';
+  const result = renderAccessEmailHtml(html, ids, {
+    requestReason: "Soporte y pruebas con usuario post producción - TIC PETER GOMEZ",
+  });
 
   assert.match(result, new RegExp(ids.join("<br>\\n")));
   assert.doesNotMatch(result, /REQUEST_IDS/);
-  assert.match(result, /Razón &lt;segura&gt;/);
+  assert.match(result, /<td>Motor de crédito masivo<\/td>/);
+  assert.doesNotMatch(result, /Soporte y pruebas/);
 });
 
 test("exige exactamente un marcador para evitar enviar ID obsoletos", () => {

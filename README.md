@@ -122,7 +122,7 @@ Los Request ID de la última ejecución se guardan en `run-results\last-run.json
 
 El resultado también guarda `conflicts` para las cuentas rechazadas con el código estable de PAM `PSPortal.Requests.Policies.RemoteAppAccesssAlreadyAvailable`. La terminal muestra sistema, aplicación, cuenta y `Request Start Date` de cada omisión. El diálogo web presenta la misma lista junto a los IDs que sí se obtuvieron. Si todos los favoritos terminan en conflicto y la acción configurada era correo, no se envía un mensaje vacío: el resultado se deja disponible en la interfaz web.
 
-Cuando una ejecución real obtiene un ID único por cada cuenta de `Favorites`, genera `run-results\CORREO_ACCESOS_PAM.html` a partir del contenido enriquecido configurado en la interfaz. El contenido debe incluir `{{REQUEST_IDS}}` exactamente una vez; al preparar el mensaje se reemplaza por todos los IDs actuales, uno por línea. También se actualiza la celda `Motivo del acceso` cuando está presente.
+Cuando una ejecución real obtiene un ID único por cada cuenta de `Favorites`, genera `run-results\CORREO_ACCESOS_PAM.html` a partir del contenido enriquecido configurado en la interfaz. El contenido debe incluir `{{REQUEST_IDS}}` exactamente una vez; al preparar el mensaje se reemplaza por todos los IDs actuales, uno por línea. El resto del contenido, incluida cualquier celda `Motivo del acceso`, se conserva tal como fue configurado por el usuario.
 
 Los ID y su cantidad no están fijados en el código. Cada correo usa exclusivamente `requestIds` de la última ejecución y comprueba que su cantidad coincida con `favoriteCount` y con las solicitudes en estado `Pending` de esas cuentas.
 

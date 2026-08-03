@@ -410,3 +410,9 @@ La configuración pendiente de otros valores importantes debe incorporarse gradu
 6. Integrar los campos de fecha, hora y correo con la lógica existente, sin duplicar reglas en HTML.
 7. Probar mediante el modo seguro y nunca mediante el lanzador real sin autorización.
 8. Actualizar los tres documentos al concluir cada avance importante.
+
+## Fase 32: el contenido fijo del correo ya no se reemplaza con la razón de la solicitud
+
+- Se eliminó la sustitución implícita de la celda `Motivo del acceso` por `PAM_REQUEST_REASON` durante la preparación del correo.
+- `{{REQUEST_IDS}}` es ahora el único contenido dinámico de la plantilla: todo lo demás se conserva exactamente como fue guardado en `Editar envío de correo`.
+- La regresión queda cubierta con una prueba que conserva `Motor de crédito masivo` aunque la ejecución tenga otra razón para el formulario del PAM.
