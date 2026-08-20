@@ -18,6 +18,7 @@ $projectDirectory = Split-Path -Parent $PSScriptRoot
 $nodeExecutable = Resolve-ProjectNode
 $envPath = Join-Path $projectDirectory '.env'
 $entryPoint = Join-Path $projectDirectory 'src\request-access.mjs'
+$artifactManager = Join-Path $projectDirectory 'src\request-result-store.mjs'
 $logsDirectory = Join-Path $projectDirectory 'logs'
 $executionMode = if ($Execute) { 'real' } elseif ($TestRun) { 'test' } else { 'preview' }
 $logTimestamp = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH-mm-ss-fffZ')
@@ -44,6 +45,14 @@ if ($Execute -and $TestRun) {
 try {
     $env:BI_HEADED = $Headed.IsPresent.ToString().ToLowerInvariant()
 
+    if ($Execute -or $TestRun) {
+        & $nodeExecutable $artifactManager clear
+        if ($LASTEXITCODE -ne 0) {
+            throw 'No se pudieron invalidar los Request ID de la ejecución anterior.'
+        }
+    }
+    $executionStartedAtUtc = [DateTime]::UtcNow
+
     $arguments = @($entryPoint)
     if ($Date) { $arguments += @('--date', $Date) }
     if ($StartTime) { $arguments += @('--time', $StartTime) }
@@ -60,6 +69,9 @@ try {
         $resultPath = Join-Path $projectDirectory 'run-results\last-run.json'
         if (-not (Test-Path -LiteralPath $resultPath)) {
             throw "No se encontró el resultado esperado: $resultPath"
+        }
+        if ((Get-Item -LiteralPath $resultPath).LastWriteTimeUtc -lt $executionStartedAtUtc) {
+            throw 'El resultado encontrado pertenece a una ejecución anterior y no se utilizará.'
         }
         $result = Get-Content -Raw -LiteralPath $resultPath | ConvertFrom-Json
         $requestIds = @($result.requestIds)

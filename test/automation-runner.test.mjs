@@ -125,6 +125,17 @@ test("traduce el bloqueo de correo duplicado a un mensaje útil", () => {
   );
 });
 
+test("explica cuando Outlook deja el mensaje en Bandeja de salida", () => {
+  const stderr = [
+    "Outlook no confirmó el envío dentro de 60 segundos. El mensaje permanecía en Bandeja de salida y se movió a Borradores para evitar un envío tardío.",
+    "+ CategoryInfo : OperationStopped",
+  ].join("\n");
+  assert.equal(
+    extractAutomationErrorMessage(stderr, 1),
+    "Outlook no completó el envío. El mensaje permanecía en Bandeja de salida y se movió a Borradores para evitar que se enviara más tarde. Revise la conexión de Outlook antes de intentarlo nuevamente.",
+  );
+});
+
 test("traduce el error genérico de Outlook sin mostrar trazas de PowerShell", () => {
   const stderr = [
     "C:\\pam automatizacion\\scripts\\run-outlook-classic.ps1 : El valor no está dentro del intervalo esperado.",

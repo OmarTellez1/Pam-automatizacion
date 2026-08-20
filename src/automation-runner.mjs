@@ -54,6 +54,12 @@ export function extractAutomationErrorMessage(stderr, exitCode) {
   if (/mismo conjunto de Request ID ya fue enviado/i.test(text)) {
     return "Ya existe un correo enviado con estos mismos Request ID. Outlook no envió un duplicado.";
   }
+  if (/permanecía en Bandeja de salida y se movió a Borradores/i.test(text)) {
+    return "Outlook no completó el envío. El mensaje permanecía en Bandeja de salida y se movió a Borradores para evitar que se enviara más tarde. Revise la conexión de Outlook antes de intentarlo nuevamente.";
+  }
+  if (/no confirmó que el mensaje llegara a Enviados/i.test(text)) {
+    return "Outlook no confirmó el envío del correo. Los Request ID no fueron marcados como enviados. Revise Outlook antes de intentarlo nuevamente.";
+  }
   if (/valor no est[aá] dentro del intervalo esperado/i.test(text)) {
     return "Outlook no pudo enviar el correo porque rechazó el mensaje preparado. Revise el borrador guardado en Outlook e inténtelo nuevamente.";
   }
