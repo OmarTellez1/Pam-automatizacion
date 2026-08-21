@@ -24,6 +24,23 @@ function assertAllowedUrl(url) {
   }
 }
 
+export async function restrictContextToPortal(context) {
+  await context.route("**/*", async (route) => {
+    const requestUrl = route.request().url();
+    if (/^(about:|data:|blob:)/.test(requestUrl)) {
+      await route.continue();
+      return;
+    }
+
+    try {
+      assertAllowedUrl(requestUrl);
+      await route.continue();
+    } catch {
+      await route.abort("blockedbyclient");
+    }
+  });
+}
+
 export async function countOrFail(locator, description, options = {}) {
   const { timeout = 30_000 } = options;
   await locator.waitFor({ state: "visible", timeout });
@@ -52,36 +69,8 @@ export async function saveFailureArtifact(page, error) {
   return { screenshotPath, reportPath };
 }
 
-export async function openAuthenticatedSession(options = {}) {
-  const credentials = options.credentials
-    ? validateCredentials(options.credentials)
-    : await loadProjectCredentials();
-  const headed = options.headed ?? isEnabled(process.env.BI_HEADED);
-
-  const browser = await chromium.launch({ channel: "chrome", headless: !headed });
-  const context = await browser.newContext({
-    ignoreHTTPSErrors: true,
-    locale: "es-EC",
-    timezoneId: "America/Guayaquil",
-    viewport: { width: 1840, height: 900 },
-  });
-
-  await context.route("**/*", async (route) => {
-    const requestUrl = route.request().url();
-    if (/^(about:|data:|blob:)/.test(requestUrl)) {
-      await route.continue();
-      return;
-    }
-
-    try {
-      assertAllowedUrl(requestUrl);
-      await route.continue();
-    } catch {
-      await route.abort("blockedbyclient");
-    }
-  });
-
-  const page = await context.newPage();
+export async function authenticatePage(page, credentialsInput) {
+  const credentials = validateCredentials(credentialsInput);
   let authenticationStage = "portal";
 
   try {
@@ -142,11 +131,36 @@ export async function openAuthenticatedSession(options = {}) {
     if ((await dashboardLink.count()) !== 1) {
       throw new Error("El portal no confirmó el inicio de sesión.");
     }
-
-    return { browser, context, page };
+    return page;
   } catch (error) {
     error.authenticationStage ??= authenticationStage;
     error.page = page;
+    throw error;
+  }
+}
+
+export async function openAuthenticatedSession(options = {}) {
+  const credentials = options.credentials
+    ? validateCredentials(options.credentials)
+    : await loadProjectCredentials();
+  const headed = options.headed ?? isEnabled(process.env.BI_HEADED);
+
+  const browser = await chromium.launch({ channel: "chrome", headless: !headed });
+  const context = await browser.newContext({
+    ignoreHTTPSErrors: true,
+    locale: "es-EC",
+    timezoneId: "America/Guayaquil",
+    viewport: { width: 1840, height: 900 },
+  });
+
+  await restrictContextToPortal(context);
+
+  const page = await context.newPage();
+
+  try {
+    await authenticatePage(page, credentials);
+    return { browser, context, page };
+  } catch (error) {
     error.browser = browser;
     throw error;
   }

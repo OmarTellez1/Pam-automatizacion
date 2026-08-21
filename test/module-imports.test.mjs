@@ -6,6 +6,11 @@ test("carga el flujo de solicitudes con todas sus dependencias válidas", async 
   assert.ok(module);
 });
 
+test("carga el generador TOTP usado por la sesión manual", async () => {
+  const module = await import("../src/current-totp.mjs");
+  assert.equal(typeof module.getCurrentProjectTotp, "function");
+});
+
 test("solo clasifica como recuperable el código exacto de solapamiento aprobado", async () => {
   const { classifySubmissionResponse } = await import("../src/request-access.mjs");
   assert.deepEqual(classifySubmissionResponse(201, {}), { submitted: true });
