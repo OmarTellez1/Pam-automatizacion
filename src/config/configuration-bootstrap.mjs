@@ -2,12 +2,12 @@ import {
   createProjectEnvironmentFile,
   defaultEnvPath,
 } from "./env-config.mjs";
-import { DEFAULT_FINAL_ACTION } from "./final-action.mjs";
+import { DEFAULT_FINAL_ACTION } from "../automation/final-action.mjs";
 import {
   defaultMailEnvPath,
   ensureMailSettingsFile,
-} from "./mail-settings.mjs";
-import { DEFAULT_HOURS, DEFAULT_REASON } from "./request-config.mjs";
+} from "../email/mail-settings.mjs";
+import { DEFAULT_HOURS, DEFAULT_REASON } from "../requests/request-config.mjs";
 
 export async function initializeLocalConfigurationFiles(options = {}) {
   const envPath = options.envPath ?? defaultEnvPath;

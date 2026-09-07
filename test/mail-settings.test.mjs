@@ -9,8 +9,8 @@ import {
   sanitizeEmailHtml,
   validateMailSettings,
   writeMailSettings,
-} from "../src/mail-settings.mjs";
-import { updateProjectEnvironment } from "../src/env-config.mjs";
+} from "../src/email/mail-settings.mjs";
+import { updateProjectEnvironment } from "../src/config/env-config.mjs";
 
 test("reconoce varios destinatarios separados por punto y coma", () => {
   assert.deepEqual(

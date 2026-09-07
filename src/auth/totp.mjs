@@ -68,3 +68,20 @@ export async function waitForSafeTotpWindow(options = {}) {
   );
 }
 
+export function millisecondsUntilNextTotpWindow(options = {}) {
+  const {
+    timestamp = Date.now(),
+    periodSeconds = 30,
+    safetyDelayMilliseconds = 1_000,
+  } = options;
+  const periodMilliseconds = periodSeconds * 1_000;
+  const elapsedMilliseconds = timestamp % periodMilliseconds;
+  return periodMilliseconds - elapsedMilliseconds + safetyDelayMilliseconds;
+}
+
+export async function waitForNextTotpWindow(options = {}) {
+  const sleep = options.sleep ?? ((milliseconds) => new Promise((resolve) => {
+    setTimeout(resolve, milliseconds);
+  }));
+  await sleep(millisecondsUntilNextTotpWindow(options));
+}

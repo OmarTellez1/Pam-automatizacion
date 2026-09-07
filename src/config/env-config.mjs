@@ -2,11 +2,11 @@ import { readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
-import { decodeBase32 } from "./totp.mjs";
+import { decodeBase32 } from "../auth/totp.mjs";
 
 export const projectDirectory = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
-  "..",
+  "../..",
 );
 export const defaultEnvPath = path.join(projectDirectory, ".env");
 

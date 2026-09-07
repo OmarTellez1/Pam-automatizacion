@@ -7,7 +7,7 @@ import {
   createLocalServer,
   describeAuthenticationFailure,
   startLocalInterface,
-} from "../src/local-server.mjs";
+} from "../src/server/local-server.mjs";
 
 async function withServer(callback, options = {}) {
   const directory = await mkdtemp(path.join(tmpdir(), "pam-ui-"));

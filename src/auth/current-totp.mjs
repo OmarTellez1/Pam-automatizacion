@@ -1,7 +1,7 @@
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
-import { loadProjectCredentials } from "./env-config.mjs";
+import { loadProjectCredentials } from "../config/env-config.mjs";
 import { generateTotp, waitForSafeTotpWindow } from "./totp.mjs";
 
 export async function getCurrentProjectTotp() {

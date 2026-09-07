@@ -9,7 +9,7 @@ $projectDirectory = Split-Path -Parent $PSScriptRoot
 . (Join-Path $PSScriptRoot 'runtime.ps1')
 $nodeExecutable = Resolve-ProjectNode
 $envPath = Join-Path $projectDirectory '.env'
-$entryPoint = Join-Path $projectDirectory 'src\login.mjs'
+$entryPoint = Join-Path $projectDirectory 'src\auth\login.mjs'
 
 if (-not (Test-Path -LiteralPath $envPath)) {
     throw "Falta $envPath. Configure las credenciales desde INICIAR_INTERFAZ.cmd."

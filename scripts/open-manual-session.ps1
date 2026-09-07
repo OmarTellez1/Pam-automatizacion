@@ -6,7 +6,7 @@ $projectDirectory = Split-Path -Parent $PSScriptRoot
 . (Join-Path $PSScriptRoot 'runtime.ps1')
 $nodeExecutable = Resolve-ProjectNode
 $envPath = Join-Path $projectDirectory '.env'
-$totpEntryPoint = Join-Path $projectDirectory 'src\current-totp.mjs'
+$totpEntryPoint = Join-Path $projectDirectory 'src\auth\current-totp.mjs'
 $loginUrl = 'https://10.30.17.117/webconsole/dashboard'
 
 Add-Type -AssemblyName UIAutomationClient

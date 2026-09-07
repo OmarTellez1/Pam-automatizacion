@@ -7,8 +7,8 @@ import {
   getOutlookSettingsState,
   loadOutlookSender,
   writeOutlookSender,
-} from "../src/outlook-settings.mjs";
-import { readProjectEnvironment, updateProjectEnvironment } from "../src/env-config.mjs";
+} from "../src/email/outlook-settings.mjs";
+import { readProjectEnvironment, updateProjectEnvironment } from "../src/config/env-config.mjs";
 
 test("guarda y recupera únicamente el remitente verificado de Outlook", async () => {
   const directory = await mkdtemp(path.join(tmpdir(), "pam-outlook-settings-"));

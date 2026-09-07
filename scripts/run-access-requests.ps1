@@ -17,8 +17,8 @@ $projectDirectory = Split-Path -Parent $PSScriptRoot
 . (Join-Path $PSScriptRoot 'runtime.ps1')
 $nodeExecutable = Resolve-ProjectNode
 $envPath = Join-Path $projectDirectory '.env'
-$entryPoint = Join-Path $projectDirectory 'src\request-access.mjs'
-$artifactManager = Join-Path $projectDirectory 'src\request-result-store.mjs'
+$entryPoint = Join-Path $projectDirectory 'src\requests\request-access.mjs'
+$artifactManager = Join-Path $projectDirectory 'src\requests\request-result-store.mjs'
 $logsDirectory = Join-Path $projectDirectory 'logs'
 $executionMode = if ($Execute) { 'real' } elseif ($TestRun) { 'test' } else { 'preview' }
 $logTimestamp = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH-mm-ss-fffZ')

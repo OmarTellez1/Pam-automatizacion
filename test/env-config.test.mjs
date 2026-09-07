@@ -11,7 +11,7 @@ import {
   validateCredentials,
   writeProjectCredentials,
   updateProjectEnvironment,
-} from "../src/env-config.mjs";
+} from "../src/config/env-config.mjs";
 
 test("interpreta valores .env entre comillas sin perder caracteres especiales", () => {
   const values = parseEnv('BI_USERNAME="usuario"\nBI_PASSWORD="p#a=s\\\\word"\n');

@@ -8,16 +8,16 @@ import {
   defaultEnvPath,
   projectDirectory,
   readProjectEnvironment,
-} from "./env-config.mjs";
+} from "../config/env-config.mjs";
 import { getFinalActionState } from "./final-action.mjs";
-import { defaultMailEnvPath, getMailSettingsState } from "./mail-settings.mjs";
-import { verifyOutlookAccount } from "./outlook-classic.mjs";
-import { getOutlookSettingsState } from "./outlook-settings.mjs";
+import { defaultMailEnvPath, getMailSettingsState } from "../email/mail-settings.mjs";
+import { verifyOutlookAccount } from "../email/outlook-classic.mjs";
+import { getOutlookSettingsState } from "../email/outlook-settings.mjs";
 import {
   parseDayMonthForEcuador,
   validateRequestStartNotPast,
-} from "./request-config.mjs";
-import { getRequestSettingsState } from "./request-settings.mjs";
+} from "../requests/request-config.mjs";
+import { getRequestSettingsState } from "../requests/request-settings.mjs";
 import { testButtonIsEnabled } from "./simulation.mjs";
 
 const automationScript = path.join(projectDirectory, "scripts", "run-access-requests.ps1");

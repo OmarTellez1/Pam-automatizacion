@@ -3,9 +3,9 @@ import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { initializeLocalConfigurationFiles } from "../src/configuration-bootstrap.mjs";
-import { readProjectEnvironment } from "../src/env-config.mjs";
-import { getMailSettingsState } from "../src/mail-settings.mjs";
+import { initializeLocalConfigurationFiles } from "../src/config/configuration-bootstrap.mjs";
+import { readProjectEnvironment } from "../src/config/env-config.mjs";
+import { getMailSettingsState } from "../src/email/mail-settings.mjs";
 
 test("crea automáticamente .env y .env.mail con todas las variables iniciales", async () => {
   const directory = await mkdtemp(path.join(tmpdir(), "pam-bootstrap-"));

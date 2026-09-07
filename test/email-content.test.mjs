@@ -6,11 +6,11 @@ import {
   migrateLegacyRequestIdsPlaceholder,
   normalizeRequestIds,
   renderAccessEmailHtml,
-} from "../src/email-content.mjs";
+} from "../src/email/email-content.mjs";
 import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { SIMULATED_REQUEST_IDS } from "../src/simulation.mjs";
+import { SIMULATED_REQUEST_IDS } from "../src/automation/simulation.mjs";
 
 const ids = Array.from({ length: 5 }, (_, index) => String(140131 + index));
 

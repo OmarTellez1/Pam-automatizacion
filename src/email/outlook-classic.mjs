@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import path from "node:path";
-import { projectDirectory } from "./env-config.mjs";
+import { projectDirectory } from "../config/env-config.mjs";
 import { validateEmailAddress } from "./email-address.mjs";
 
 const outlookCheckScript = path.join(

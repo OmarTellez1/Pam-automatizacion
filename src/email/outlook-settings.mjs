@@ -1,7 +1,7 @@
 import {
   readProjectEnvironment,
   updateProjectEnvironment,
-} from "./env-config.mjs";
+} from "../config/env-config.mjs";
 import { validateEmailAddress } from "./email-address.mjs";
 import { defaultMailEnvPath } from "./mail-settings.mjs";
 

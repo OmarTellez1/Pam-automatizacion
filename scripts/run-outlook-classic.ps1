@@ -19,7 +19,7 @@ if ($ValidateOnly -and ($Send -or $Display -or $Force)) {
     throw '-ValidateOnly no se puede combinar con -Send, -Display o -Force.'
 }
 
-& $node (Join-Path $projectDirectory 'src\prepare-access-email.mjs')
+& $node (Join-Path $projectDirectory 'src\email\prepare-access-email.mjs')
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 $manifest = Get-Content -Raw -Encoding UTF8 -LiteralPath $manifestPath | ConvertFrom-Json
 if ([bool]$manifest.testMode) {
@@ -330,7 +330,7 @@ try {
         }
         $audit | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $lastEmailPath -Encoding UTF8
         if (Test-Path -LiteralPath $lastDraftPath) { Remove-Item -LiteralPath $lastDraftPath -Force }
-        & $node (Join-Path $projectDirectory 'src\request-result-store.mjs') consume-email
+        & $node (Join-Path $projectDirectory 'src\requests\request-result-store.mjs') consume-email
         if ($LASTEXITCODE -ne 0) {
             Write-Warning 'El correo fue aceptado por Outlook, pero no se pudieron vaciar todos los Request ID temporales. La próxima ejecución volverá a invalidarlos antes de comenzar.'
         }

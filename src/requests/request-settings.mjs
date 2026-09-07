@@ -3,7 +3,7 @@ import {
   defaultEnvPath,
   readProjectEnvironment,
   updateProjectEnvironment,
-} from "./env-config.mjs";
+} from "../config/env-config.mjs";
 import {
   DEFAULT_HOURS,
   DEFAULT_REASON,

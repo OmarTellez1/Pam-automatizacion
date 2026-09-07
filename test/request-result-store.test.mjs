@@ -7,8 +7,8 @@ import {
   clearPreviousRequestArtifacts,
   consumeEmailedRequestResult,
   requestArtifactPaths,
-} from "../src/request-result-store.mjs";
-import { extractValidatedRequestIds } from "../src/email-content.mjs";
+} from "../src/requests/request-result-store.mjs";
+import { extractValidatedRequestIds } from "../src/email/email-content.mjs";
 
 async function exists(filePath) {
   try {

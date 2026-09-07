@@ -10,6 +10,19 @@ Abra PowerShell en esta carpeta y ejecute:
 npm install
 ```
 
+## Estructura del código
+
+Los módulos de `src` están agrupados por responsabilidad:
+
+- `auth`: inicio de sesión, sesión del navegador y códigos TOTP.
+- `requests`: configuración, ejecución y resultados de solicitudes PAM.
+- `email`: configuración, preparación y envío mediante Outlook clásico.
+- `automation`: coordinación de ejecuciones, simulación y acción final.
+- `config`: archivos de entorno e inicialización de la configuración local.
+- `server`: servidor de la interfaz web local.
+
+Al iniciar la interfaz se ejecuta una limpieza automática de retención. Se eliminan de forma recursiva únicamente los archivos con más de 48 horas dentro de `.playwright-cli`, `logs` y `run-artifacts`; las carpetas se conservan. `state`, `run-results`, `.env` y `.env.mail` no participan en esta limpieza.
+
 ## Abrir solamente una sesión autenticada de PAM
 
 Ejecute `ABRIR_SESION_PAM.cmd` para abrir una ventana nueva en el perfil habitual de Google Chrome, conservando sus sesiones, extensiones y preferencias de descarga. El lanzador entra por `https://10.30.17.117/webconsole/dashboard`, utiliza `BI_USERNAME`, `BI_PASSWORD` y `BI_TOTP_SECRET` desde `.env`, completa el login cuando el portal lo solicita, confirma la sesión, ajusta la página al 67% de zoom y la deja disponible para uso manual. No crea solicitudes ni envía correos. La terminal se cierra automáticamente después del login y Chrome permanece abierto.

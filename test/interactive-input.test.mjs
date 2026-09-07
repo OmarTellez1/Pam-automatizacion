@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parseYesNo, promptUntilValid } from "../src/interactive-input.mjs";
+import { parseYesNo, promptUntilValid } from "../src/requests/interactive-input.mjs";
 import {
   parseDayMonthForEcuador,
   validateStartTime,
-} from "../src/request-config.mjs";
+} from "../src/requests/request-config.mjs";
 
 function fakeTerminal(answers) {
   const prompts = [];

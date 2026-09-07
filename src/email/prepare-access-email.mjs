@@ -8,9 +8,9 @@ import {
   materializeInlineImages,
 } from "./email-content.mjs";
 import { loadMailSettings } from "./mail-settings.mjs";
-import { formatAutomationEmailSubject } from "./simulation.mjs";
+import { formatAutomationEmailSubject } from "../automation/simulation.mjs";
 
-const projectDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const projectDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const resultsDirectory = path.join(projectDirectory, "run-results");
 const resultPath = path.join(resultsDirectory, "last-run.json");
 const manifestPath = path.join(resultsDirectory, "email-manifest.json");

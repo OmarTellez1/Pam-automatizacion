@@ -6,13 +6,13 @@ import test from "node:test";
 import {
   readProjectEnvironment,
   writeProjectCredentials,
-} from "../src/env-config.mjs";
+} from "../src/config/env-config.mjs";
 import {
   getRequestSettingsState,
   loadRequestSettings,
   validateRequestSettings,
   writeRequestSettings,
-} from "../src/request-settings.mjs";
+} from "../src/requests/request-settings.mjs";
 
 test("valida fecha, hora, duración total y razón de la solicitud", () => {
   assert.deepEqual(validateRequestSettings({

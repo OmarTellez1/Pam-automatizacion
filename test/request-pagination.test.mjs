@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parsePaginationLabel } from "../src/request-access.mjs";
+import { parsePaginationLabel } from "../src/requests/request-access.mjs";
 
 test("interpreta la página actual y el total del paginador de Pending", () => {
   assert.deepEqual(parsePaginationLabel("Page 1/2"), {

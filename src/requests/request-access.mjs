@@ -17,16 +17,16 @@ import {
   validateStartTime,
 } from "./request-config.mjs";
 import { loadRequestSettings } from "./request-settings.mjs";
-import { loadMailSettings } from "./mail-settings.mjs";
-import { finalActionSendsEmail, loadFinalAction } from "./final-action.mjs";
-import { SIMULATED_REQUEST_IDS } from "./simulation.mjs";
-import { projectDirectory } from "./env-config.mjs";
+import { loadMailSettings } from "../email/mail-settings.mjs";
+import { finalActionSendsEmail, loadFinalAction } from "../automation/final-action.mjs";
+import { SIMULATED_REQUEST_IDS } from "../automation/simulation.mjs";
+import { projectDirectory } from "../config/env-config.mjs";
 import {
   TARGET_ORIGIN,
   isEnabled,
   openAuthenticatedSession,
   saveFailureArtifact,
-} from "./session.mjs";
+} from "../auth/session.mjs";
 
 const ACCOUNTS_URL = `${TARGET_ORIGIN}/webconsole/ps/portal?tab=accounts`;
 const REQUESTS_URL = `${TARGET_ORIGIN}/webconsole/ps/portal?tab=requests`;
@@ -681,6 +681,7 @@ async function waitForPendingRequest(page, target, options) {
 }
 
 let session;
+let failedBrowser;
 let cancellationStarted = false;
 
 async function cancelAutomation() {
@@ -896,12 +897,13 @@ try {
     }
   }
 } catch (error) {
+  failedBrowser = error.browser;
   const artifacts = await saveFailureArtifact(error.page ?? session?.page, error);
   console.error(`Flujo de solicitudes fallido: ${error.message}`);
   console.error(`Diagnóstico: ${artifacts.reportPath}`);
   process.exitCode = 1;
 } finally {
   process.off("SIGINT", cancelAutomation);
-  await (session?.browser ?? undefined)?.close().catch(() => {});
+  await (session?.browser ?? failedBrowser)?.close().catch(() => {});
 }
 }

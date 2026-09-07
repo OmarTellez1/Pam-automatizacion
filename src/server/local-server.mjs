@@ -9,36 +9,37 @@ import {
   defaultEnvPath,
   projectDirectory,
   writeProjectCredentials,
-} from "./env-config.mjs";
-import { openAuthenticatedSession, saveFailureArtifact } from "./session.mjs";
+} from "../config/env-config.mjs";
+import { openAuthenticatedSession, saveFailureArtifact } from "../auth/session.mjs";
 import {
   getRequestSettingsState,
   writeRequestSettings,
-} from "./request-settings.mjs";
+} from "../requests/request-settings.mjs";
 import {
   defaultMailEnvPath,
   getMailSettingsState,
   writeMailSettings,
-} from "./mail-settings.mjs";
+} from "../email/mail-settings.mjs";
 import {
   getOutlookSettingsState,
   loadOutlookSender,
   writeOutlookSender,
-} from "./outlook-settings.mjs";
+} from "../email/outlook-settings.mjs";
 import {
   sendOutlookTestEmail,
   verifyOutlookAccount,
-} from "./outlook-classic.mjs";
+} from "../email/outlook-classic.mjs";
 import {
   getFinalActionState,
   writeFinalAction,
-} from "./final-action.mjs";
+} from "../automation/final-action.mjs";
 import {
   defaultAutomationResultPath,
   getLatestAutomationResult,
-} from "./automation-result.mjs";
-import { initializeLocalConfigurationFiles } from "./configuration-bootstrap.mjs";
-import { createAutomationController } from "./automation-runner.mjs";
+} from "../automation/automation-result.mjs";
+import { initializeLocalConfigurationFiles } from "../config/configuration-bootstrap.mjs";
+import { cleanupExpiredArtifacts } from "../config/artifact-retention.mjs";
+import { createAutomationController } from "../automation/automation-runner.mjs";
 
 const HOST = "127.0.0.1";
 const DEFAULT_PORT = 4317;
@@ -475,6 +476,18 @@ export async function startLocalInterface(options = {}) {
   const port = options.port ?? DEFAULT_PORT;
   const envPath = options.envPath ?? defaultEnvPath;
   const mailEnvPath = options.mailEnvPath ?? defaultMailEnvPath;
+  const cleanupArtifacts = options.cleanupArtifacts ?? cleanupExpiredArtifacts;
+  const cleanupResult = await cleanupArtifacts({
+    projectDirectory: path.dirname(path.resolve(envPath)),
+  });
+  if (cleanupResult.deletedCount > 0) {
+    console.log(
+      `Limpieza automática: se eliminaron ${cleanupResult.deletedCount} archivos con más de ${cleanupResult.retentionDays} días.`,
+    );
+  }
+  for (const failure of cleanupResult.failed) {
+    console.warn(`No se pudo limpiar ${failure.path}: ${failure.message}`);
+  }
   await initializeLocalConfigurationFiles({ envPath, mailEnvPath });
   const server = createLocalServer({ ...options, envPath, mailEnvPath });
   await new Promise((resolve, reject) => {

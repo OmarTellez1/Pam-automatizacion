@@ -6,6 +6,7 @@ import {
 } from "./session.mjs";
 
 let session;
+let failedBrowser;
 
 try {
   session = await openAuthenticatedSession();
@@ -17,11 +18,11 @@ try {
     await session.page.waitForEvent("close", { timeout: 0 });
   }
 } catch (error) {
+  failedBrowser = error.browser;
   const artifacts = await saveFailureArtifact(error.page, error);
   console.error(`Inicio de sesión fallido: ${error.message}`);
   console.error(`Diagnóstico: ${artifacts.reportPath}`);
   process.exitCode = 1;
 } finally {
-  await (session?.browser ?? undefined)?.close().catch(() => {});
+  await (session?.browser ?? failedBrowser)?.close().catch(() => {});
 }
-

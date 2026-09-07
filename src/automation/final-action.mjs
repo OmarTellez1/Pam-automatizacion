@@ -3,7 +3,7 @@ import {
   defaultEnvPath,
   readProjectEnvironment,
   updateProjectEnvironment,
-} from "./env-config.mjs";
+} from "../config/env-config.mjs";
 
 export const FINAL_ACTION_WEB = "web";
 export const FINAL_ACTION_EMAIL = "email";

@@ -2,7 +2,7 @@ import { readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const projectDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const projectDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const defaultResultsDirectory = path.join(projectDirectory, "run-results");
 
 export function requestArtifactPaths(resultsDirectory = defaultResultsDirectory) {

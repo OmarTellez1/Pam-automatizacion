@@ -6,8 +6,12 @@ import {
   loadProjectCredentials,
   projectDirectory,
   validateCredentials,
-} from "./env-config.mjs";
-import { generateTotp, waitForSafeTotpWindow } from "./totp.mjs";
+} from "../config/env-config.mjs";
+import {
+  generateTotp,
+  waitForNextTotpWindow,
+  waitForSafeTotpWindow,
+} from "./totp.mjs";
 
 export const TARGET_ORIGIN = "https://10.30.17.117";
 export const LOGIN_URL = `${TARGET_ORIGIN}/webconsole/login?redir=dashboard`;
@@ -69,6 +73,28 @@ export async function saveFailureArtifact(page, error) {
   return { screenshotPath, reportPath };
 }
 
+export async function submitTotpWithSingleRetry(submitAttempt, options = {}) {
+  const waitUntilSafe = options.waitUntilSafe ?? waitForSafeTotpWindow;
+  const waitUntilNext = options.waitUntilNext ?? waitForNextTotpWindow;
+  const warn = options.warn ?? console.warn;
+
+  await waitUntilSafe();
+  let outcome = await submitAttempt();
+  if (outcome === "rejected") {
+    warn(
+      "El PAM rechazó el código del Authenticator. Se esperará al siguiente código y se intentará una vez más.",
+    );
+    await waitUntilNext();
+    outcome = await submitAttempt();
+  }
+  if (outcome === "rejected") {
+    throw new Error(
+      "El PAM rechazó dos códigos consecutivos de Microsoft Authenticator. Revise que la clave Base32 configurada corresponda a la cuenta correcta.",
+    );
+  }
+  return outcome;
+}
+
 export async function authenticatePage(page, credentialsInput) {
   const credentials = validateCredentials(credentialsInput);
   let authenticationStage = "portal";
@@ -110,18 +136,34 @@ export async function authenticatePage(page, credentialsInput) {
     });
     await responseField.waitFor({ state: "visible", timeout: 30_000 });
     authenticationStage = "totp";
-    await waitForSafeTotpWindow();
-    await responseField.fill(generateTotp(credentials.totpSecret));
-
     const submitButton = await countOrFail(
       page.getByRole("button", { name: "Submit", exact: true }),
       "Submit",
     );
-    await submitButton.click();
-    await page.waitForURL(
-      (url) => url.origin === TARGET_ORIGIN && !url.pathname.includes("/login"),
-      { timeout: 30_000, waitUntil: "domcontentloaded" },
-    );
+
+    const rejectionMessage = page.getByText(/the provided token was rejected/i);
+    const submitCurrentTotp = async () => {
+      await responseField.waitFor({ state: "visible", timeout: 30_000 });
+      await responseField.fill(generateTotp(credentials.totpSecret));
+
+      const previousRejection = (await rejectionMessage.count()) > 0
+        ? await rejectionMessage.first().elementHandle()
+        : null;
+      const accepted = page.waitForURL(
+        (url) => url.origin === TARGET_ORIGIN && !url.pathname.includes("/login"),
+        { timeout: 30_000, waitUntil: "domcontentloaded" },
+      ).then(() => "accepted");
+      const rejected = (previousRejection
+        ? previousRejection.waitForElementState("detached", { timeout: 30_000 })
+        : Promise.resolve())
+        .then(() => rejectionMessage.waitFor({ state: "visible", timeout: 30_000 }))
+        .then(() => "rejected");
+
+      await submitButton.click();
+      return Promise.race([accepted, rejected]);
+    };
+
+    await submitTotpWithSingleRetry(submitCurrentTotp);
     authenticationStage = "confirmation";
 
     const dashboardLink = page.getByRole("link", {

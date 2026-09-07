@@ -5,7 +5,7 @@ import {
   projectDirectory,
   readProjectEnvironment,
   updateProjectEnvironment,
-} from "./env-config.mjs";
+} from "../config/env-config.mjs";
 import { validateEmailAddress } from "./email-address.mjs";
 import {
   migrateLegacyRequestIdsPlaceholder,

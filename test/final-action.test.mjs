@@ -9,8 +9,8 @@ import {
   loadFinalAction,
   validateFinalAction,
   writeFinalAction,
-} from "../src/final-action.mjs";
-import { updateProjectEnvironment } from "../src/env-config.mjs";
+} from "../src/automation/final-action.mjs";
+import { updateProjectEnvironment } from "../src/config/env-config.mjs";
 
 test("usa la interfaz web como resultado seguro predeterminado", async () => {
   const directory = await mkdtemp(path.join(tmpdir(), "pam-final-default-"));

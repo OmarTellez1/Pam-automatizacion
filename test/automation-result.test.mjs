@@ -3,8 +3,8 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { getLatestAutomationResult } from "../src/automation-result.mjs";
-import { SIMULATED_REQUEST_IDS } from "../src/simulation.mjs";
+import { getLatestAutomationResult } from "../src/automation/automation-result.mjs";
+import { SIMULATED_REQUEST_IDS } from "../src/automation/simulation.mjs";
 
 const requestIds = Array.from({ length: 3 }, (_, index) => String(160001 + index));
 const pending = requestIds.map((id) => ({ id, status: "Pending" }));

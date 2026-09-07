@@ -15,7 +15,7 @@ import {
   validateIsoDate,
   validateRequestStartNotPast,
   validateStartTime,
-} from "../src/request-config.mjs";
+} from "../src/requests/request-config.mjs";
 
 test("valida fechas ISO reales", () => {
   assert.equal(validateIsoDate("2026-08-01"), "2026-08-01");

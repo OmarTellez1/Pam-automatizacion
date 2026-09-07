@@ -5,10 +5,10 @@
   "type": "module",
   "scripts": {
     "test": "node --test",
-    "ui": "node src/local-server.mjs",
-    "login": "node src/login.mjs",
-    "request-access": "node src/request-access.mjs",
-    "email:prepare": "node src/prepare-access-email.mjs"
+    "ui": "node src/server/local-server.mjs",
+    "login": "node src/auth/login.mjs",
+    "request-access": "node src/requests/request-access.mjs",
+    "email:prepare": "node src/email/prepare-access-email.mjs"
   },
   "dependencies": {
     "playwright-core": "1.62.1"

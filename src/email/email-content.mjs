@@ -2,10 +2,10 @@ import { createHash } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { requestKey } from "./request-config.mjs";
-import { validateSimulatedRequestIds } from "./simulation.mjs";
+import { requestKey } from "../requests/request-config.mjs";
+import { validateSimulatedRequestIds } from "../automation/simulation.mjs";
 
-const projectDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const projectDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const htmlOutputPath = path.join(projectDirectory, "run-results", "CORREO_ACCESOS_PAM.html");
 export const REQUEST_IDS_PLACEHOLDER = "{{REQUEST_IDS}}";
 

@@ -6,9 +6,9 @@ import test from "node:test";
 import {
   createAutomationController,
   extractAutomationErrorMessage,
-} from "../src/automation-runner.mjs";
-import { updateProjectEnvironment } from "../src/env-config.mjs";
-import { formatAutomationEmailSubject } from "../src/simulation.mjs";
+} from "../src/automation/automation-runner.mjs";
+import { updateProjectEnvironment } from "../src/config/env-config.mjs";
+import { formatAutomationEmailSubject } from "../src/automation/simulation.mjs";
 
 async function createConfiguredEnvironment(testButtonValue) {
   const directory = await mkdtemp(path.join(tmpdir(), "pam-automation-controller-"));
@@ -31,7 +31,7 @@ async function createConfiguredEnvironment(testButtonValue) {
 }
 
 async function configureEmailFinalAction(paths) {
-  const env = await import("../src/env-config.mjs");
+  const env = await import("../src/config/env-config.mjs");
   await env.updateProjectEnvironment({ PAM_FINAL_ACTION: "email" }, { envPath: paths.envPath });
   await writeFile(paths.mailEnvPath, [
     'PAM_MAIL_SENDER="sender@example.com"',

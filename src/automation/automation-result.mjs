@@ -1,7 +1,7 @@
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
-import { extractValidatedRequestIds } from "./email-content.mjs";
-import { projectDirectory } from "./env-config.mjs";
+import { extractValidatedRequestIds } from "../email/email-content.mjs";
+import { projectDirectory } from "../config/env-config.mjs";
 
 export const defaultAutomationResultPath = path.join(
   projectDirectory,
