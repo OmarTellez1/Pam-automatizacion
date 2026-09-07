@@ -4,6 +4,7 @@ cd /d "%~dp0"
 
 title Abrir sesion autenticada de PAM
 echo Abriendo PAM con las credenciales configuradas...
+echo El codigo del Authenticator se calculara con la hora del portal PAM.
 echo Esta ventana se cerrara automaticamente cuando la sesion este lista.
 echo.
 

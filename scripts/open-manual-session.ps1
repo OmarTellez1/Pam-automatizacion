@@ -250,15 +250,29 @@ function Find-AuthenticatedPamWindow {
     return $null
 }
 
-function Get-CurrentTotp {
-    $totp = [string](& $nodeExecutable $totpEntryPoint)
+function Get-CurrentTotp([switch]$NextWindow) {
+    $totpArguments = @($totpEntryPoint)
+    if ($NextWindow) { $totpArguments += '--next-window' }
+    $totp = [string](& $nodeExecutable @totpArguments)
     if ($LASTEXITCODE -ne 0 -or $totp -notmatch '^\d{6}$') {
         throw 'No se pudo generar el código temporal de Microsoft Authenticator.'
     }
     return $totp
 }
 
-function Wait-AuthenticatedAddress([IntPtr]$WindowHandle, [int]$TimeoutSeconds = 40) {
+function Test-TotpRejected([IntPtr]$WindowHandle) {
+    $window = [Windows.Automation.AutomationElement]::FromHandle($WindowHandle)
+    if (-not $window) { return $false }
+    $condition = [Windows.Automation.PropertyCondition]::new(
+        [Windows.Automation.AutomationElement]::NameProperty,
+        'The provided token was rejected. Please try again or contact your administrator if you cannot login.'
+    )
+    $message = $window.FindFirst([Windows.Automation.TreeScope]::Descendants, $condition)
+    return ($message -and -not $message.Current.IsOffscreen)
+}
+
+function Wait-AuthenticatedAddress([IntPtr]$WindowHandle, [int]$TimeoutSeconds = 40, [switch]$IgnorePreviousRejection) {
+    $waitingForPreviousRejection = $IgnorePreviousRejection.IsPresent
     $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
     while ([DateTime]::UtcNow -lt $deadline) {
         try {
@@ -268,9 +282,38 @@ function Wait-AuthenticatedAddress([IntPtr]$WindowHandle, [int]$TimeoutSeconds =
             }
         }
         catch {}
-        Start-Sleep -Milliseconds 250
+        $rejected = Test-TotpRejected -WindowHandle $WindowHandle
+        if (-not $rejected) { $waitingForPreviousRejection = $false }
+        if ($rejected -and -not $waitingForPreviousRejection) {
+            $totpRejectionError = [InvalidOperationException]::new('El PAM rechazó el código de Microsoft Authenticator.')
+            $totpRejectionError.Data['TotpRejected'] = $true
+            throw $totpRejectionError
+        }
+        Start-Sleep -Milliseconds 100
     }
     throw 'El portal no confirmó el inicio de sesión.'
+}
+
+function Complete-TotpAuthentication([IntPtr]$WindowHandle) {
+    for ($attempt = 0; $attempt -lt 2; $attempt += 1) {
+        $responseField = Wait-Control -WindowHandle $WindowHandle -Name 'Enter Response' -ControlType ([Windows.Automation.ControlType]::Edit)
+        $submitButton = Wait-Control -WindowHandle $WindowHandle -Name 'Submit' -ControlType ([Windows.Automation.ControlType]::Button)
+        $totp = Get-CurrentTotp -NextWindow:($attempt -eq 1)
+        Set-ControlValue -Control $responseField -Value $totp
+        $ignorePreviousRejection = Test-TotpRejected -WindowHandle $WindowHandle
+        Invoke-Control -Control $submitButton
+        $totp = $null
+        try {
+            return Wait-AuthenticatedAddress -WindowHandle $WindowHandle -IgnorePreviousRejection:$ignorePreviousRejection
+        }
+        catch {
+            if (-not $_.Exception.Data['TotpRejected']) { throw }
+            if ($attempt -eq 1) {
+                throw 'El PAM rechazó dos códigos consecutivos de Microsoft Authenticator. Revise la clave Base32 configurada.'
+            }
+            Write-Host 'El PAM rechazó el código. Se esperará al siguiente intervalo del portal y se intentará una vez más.'
+        }
+    }
 }
 
 function Set-ChromeZoomTo67([IntPtr]$WindowHandle) {
@@ -362,13 +405,7 @@ try {
         $loginButton = Wait-Control -WindowHandle $windowHandle -Name 'Log In' -ControlType ([Windows.Automation.ControlType]::Button)
         Invoke-Control -Control $loginButton
 
-        $responseField = Wait-Control -WindowHandle $windowHandle -Name 'Enter Response' -ControlType ([Windows.Automation.ControlType]::Edit)
-        $totp = Get-CurrentTotp
-        Set-ControlValue -Control $responseField -Value $totp
-        $submitButton = Wait-Control -WindowHandle $windowHandle -Name 'Submit' -ControlType ([Windows.Automation.ControlType]::Button)
-        Invoke-Control -Control $submitButton
-
-        $authenticatedAddress = Wait-AuthenticatedAddress -WindowHandle $windowHandle
+        $authenticatedAddress = Complete-TotpAuthentication -WindowHandle $windowHandle
     }
     Set-ChromeZoomTo67 -WindowHandle $windowHandle
     Write-Host "Sesión manual de PAM abierta correctamente: $authenticatedAddress"

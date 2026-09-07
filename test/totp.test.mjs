@@ -1,11 +1,48 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  createTotpClock,
   decodeBase32,
   generateTotp,
   millisecondsUntilNextTotpWindow,
   waitForNextTotpWindow,
+  waitForSafeTotpWindow,
 } from "../src/auth/totp.mjs";
+
+test("genera el TOTP con el reloj de PAM aunque Windows tenga 67 segundos de atraso", () => {
+  const serverTimestamp = Date.UTC(2026, 8, 7, 14, 27, 23);
+  let localNow = serverTimestamp - 67_000;
+  const now = createTotpClock(new Date(serverTimestamp).toUTCString(), {
+    requestStartedAt: localNow - 100,
+    responseReceivedAt: localNow + 100,
+    now: () => localNow,
+  });
+  const secret = "JBSWY3DPEHPK3PXP";
+  assert.equal(now(), serverTimestamp + 500);
+  assert.equal(generateTotp(secret, { timestamp: now() }), generateTotp(secret, { timestamp: serverTimestamp }));
+  assert.notEqual(generateTotp(secret, { timestamp: now() }), generateTotp(secret, { timestamp: localNow }));
+  localNow += 30_000;
+  assert.equal(now(), serverTimestamp + 30_500);
+});
+
+test("detiene la generación si PAM no proporciona una hora válida", () => {
+  for (const serverDate of [undefined, null, "", "invalid"]) {
+    assert.throws(() => createTotpClock(serverDate, {
+      requestStartedAt: 0, responseReceivedAt: 100,
+    }), /hora del portal/);
+  }
+});
+
+test("espera usando la ventana de PAM y respeta los milisegundos antes del vencimiento", async () => {
+  for (const [timestamp, expectedWait] of [[22_001, 8999], [22_000, 0], [29_900, 1100]]) {
+    let waited = 0;
+    await waitForSafeTotpWindow({
+      now: () => timestamp,
+      sleep: async (milliseconds) => { waited = milliseconds; },
+    });
+    assert.equal(waited, expectedWait);
+  }
+});
 
 test("decodifica Base32 sin distinguir espacios, guiones o mayúsculas", () => {
   assert.equal(decodeBase32("jbsw-y3dp ehpk3pxp").toString("hex"), "48656c6c6f21deadbeef");

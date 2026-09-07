@@ -8,6 +8,7 @@ import {
   validateCredentials,
 } from "../config/env-config.mjs";
 import {
+  createTotpClock,
   generateTotp,
   waitForNextTotpWindow,
   waitForSafeTotpWindow,
@@ -100,8 +101,14 @@ export async function authenticatePage(page, credentialsInput) {
   let authenticationStage = "portal";
 
   try {
-    await page.goto(LOGIN_URL, { waitUntil: "domcontentloaded" });
+    const requestStartedAt = Date.now();
+    const loginResponse = await page.goto(LOGIN_URL, { waitUntil: "domcontentloaded" });
+    const responseReceivedAt = Date.now();
     assertAllowedUrl(page.url());
+    const totpNow = createTotpClock(await loginResponse?.headerValue("date"), {
+      requestStartedAt,
+      responseReceivedAt,
+    });
 
     const username = await countOrFail(
       page.getByRole("textbox", { name: "Username", exact: true }),
@@ -144,35 +151,49 @@ export async function authenticatePage(page, credentialsInput) {
     const rejectionMessage = page.getByText(/the provided token was rejected/i);
     const submitCurrentTotp = async () => {
       await responseField.waitFor({ state: "visible", timeout: 30_000 });
-      await responseField.fill(generateTotp(credentials.totpSecret));
+      await submitButton.click({ trial: true, timeout: 30_000 });
+      await waitForSafeTotpWindow({ now: totpNow });
+      await responseField.fill(generateTotp(credentials.totpSecret, { timestamp: totpNow() }));
 
       const previousRejection = (await rejectionMessage.count()) > 0
         ? await rejectionMessage.first().elementHandle()
         : null;
+      const controller = new AbortController();
+      const waitOptions = { timeout: 30_000, signal: controller.signal };
       const accepted = page.waitForURL(
         (url) => url.origin === TARGET_ORIGIN && !url.pathname.includes("/login"),
-        { timeout: 30_000, waitUntil: "domcontentloaded" },
+        { ...waitOptions, waitUntil: "domcontentloaded" },
       ).then(() => "accepted");
       const rejected = (previousRejection
-        ? previousRejection.waitForElementState("detached", { timeout: 30_000 })
+        ? previousRejection.waitForElementState("hidden", waitOptions)
         : Promise.resolve())
-        .then(() => rejectionMessage.waitFor({ state: "visible", timeout: 30_000 }))
+        .then(() => rejectionMessage.waitFor({ state: "visible", ...waitOptions }))
         .then(() => "rejected");
 
-      await submitButton.click();
-      return Promise.race([accepted, rejected]);
+      // Attach rejection handlers before clicking: a waiter can fail during the click.
+      try {
+        const [outcome] = await Promise.all([
+          Promise.race([accepted, rejected]),
+          submitButton.click(),
+        ]);
+        return outcome;
+      } finally {
+        controller.abort();
+        await previousRejection?.dispose();
+      }
     };
 
-    await submitTotpWithSingleRetry(submitCurrentTotp);
+    await submitTotpWithSingleRetry(submitCurrentTotp, {
+      waitUntilSafe: () => waitForSafeTotpWindow({ now: totpNow }),
+      waitUntilNext: () => waitForNextTotpWindow({ timestamp: totpNow() }),
+    });
     authenticationStage = "confirmation";
 
     const dashboardLink = page.getByRole("link", {
       name: "Return to dashboard",
       exact: true,
     });
-    if ((await dashboardLink.count()) !== 1) {
-      throw new Error("El portal no confirmó el inicio de sesión.");
-    }
+    await countOrFail(dashboardLink, "Return to dashboard");
     return page;
   } catch (error) {
     error.authenticationStage ??= authenticationStage;

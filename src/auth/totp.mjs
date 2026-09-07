@@ -2,6 +2,19 @@ import { createHmac } from "node:crypto";
 
 const BASE32_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 
+export function createTotpClock(serverDate, options = {}) {
+  const { requestStartedAt, responseReceivedAt, now = Date.now } = options;
+  const serverTimestamp = Date.parse(serverDate);
+  if (!Number.isFinite(serverTimestamp) ||
+      !Number.isFinite(requestStartedAt) || !Number.isFinite(responseReceivedAt)) {
+    throw new Error("No se pudo obtener la hora del portal para generar el código del Authenticator.");
+  }
+
+  // HTTP Date has one-second precision. Account for that and half the round trip.
+  const offset = serverTimestamp + 500 - (requestStartedAt + responseReceivedAt) / 2;
+  return () => now() + offset;
+}
+
 export function decodeBase32(value) {
   const normalized = String(value)
     .toUpperCase()
@@ -55,17 +68,19 @@ export function generateTotp(secret, options = {}) {
 }
 
 export async function waitForSafeTotpWindow(options = {}) {
-  const { periodSeconds = 30, minimumRemainingSeconds = 8 } = options;
-  const elapsed = Math.floor(Date.now() / 1000) % periodSeconds;
-  const remaining = periodSeconds - elapsed;
+  const {
+    periodSeconds = 30,
+    minimumRemainingSeconds = 8,
+    now = Date.now,
+    sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
+  } = options;
+  const remaining = periodSeconds * 1000 - now() % (periodSeconds * 1000);
 
-  if (remaining >= minimumRemainingSeconds) {
+  if (remaining >= minimumRemainingSeconds * 1000) {
     return;
   }
 
-  await new Promise((resolve) =>
-    setTimeout(resolve, (remaining + 1) * 1000),
-  );
+  await sleep(remaining + 1000);
 }
 
 export function millisecondsUntilNextTotpWindow(options = {}) {
